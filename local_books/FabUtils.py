@@ -41,7 +41,7 @@ class FabOrchestrator:
             
             yield node
             
-    def executeCommandOnNodesParallel(self, command, prefixList=None):
+    def executeCommandsParallel(self, command, prefixList=None):
         '''
         Execute a command, in parallel using threads, on all or a subset of remote FABRIC nodes
         '''
