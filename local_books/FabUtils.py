@@ -25,7 +25,7 @@ class FabOrchestrator:
         except Exception as e:
             print(f"Exception: {e}")
 
-    def _selectedNodes(self, prefixList=None):
+    def selectedNodes(self, prefixList=None):
         '''
         Perform an action (execute a command, up/download a file, etc.) on a subset of nodes
         '''
@@ -46,12 +46,12 @@ class FabOrchestrator:
         Execute a command, in parallel using threads, on all or a subset of remote FABRIC nodes
         '''
         
-        print(f'Command Executed: {command}')
+        print(f'Command executed: {command}')
 
         try:
             #Create execute threads
             execute_threads = {}
-            for node in self._selectedNodes(prefixList):
+            for node in self.selectedNodes(prefixList):
                 print(f"Starting command on node {node.get_name()}")
                 execute_threads[node] = node.execute_thread(command)
 
@@ -66,6 +66,33 @@ class FabOrchestrator:
             print(f"Exception: {e}")
 
         return
+
+    def uploadDirectoryParallel(self, directory, remoteLocation=None, prefixList=None):
+        '''
+        '''
+        
+        if(remoteLocation is None):
+            remoteLocation = "/home/rocky"
+        
+        print(f'Directory to upload: {directory}\nPlaced in: {remoteLocation}')
+
+        try:
+            #Create execute threads
+            execute_threads = {}
+            for node in self.selectedNodes(prefixList):
+                print(f"Starting upload on node {node.get_name()}")
+                execute_threads[node] = node.upload_directory_thread(directory, remoteLocation)
+
+            #Wait for results from threads
+            for node,thread in execute_threads.items():
+                print(f"Waiting for result from node {node.get_name()}")
+                output = thread.result()
+                print(f"Output: {output}")
+
+        except Exception as e:
+            print(f"Exception: {e}")
+
+        return    
 
     def saveSSHCommands(self):
         '''
