@@ -6,6 +6,7 @@ THE SLICE MUST ALREADY BE CREATED FOR THIS TO WORK
 '''
 
 from fabrictestbed_extensions.fablib.fablib import FablibManager as fablib_manager
+import datetime
 
 class FabOrchestrator:
     # Constructor, get access to the slice and nodes
@@ -104,4 +105,14 @@ class FabOrchestrator:
                 sshFile.write(f"{node.get_name()}:\n")
                 sshFile.write(f"{node.get_ssh_command()}\n")
 
+        return
+    
+    def renewSlice(self, daysToAdd):
+        '''
+        Renew the slice for a set number of days
+        '''
+        
+        endDate = (datetime.datetime.now() + datetime.timedelta(days=daysToAdd)).strftime("%Y-%m-%d %H:%M:%S %z") + "+0000"
+        self.slice.renew(endDate)
+        
         return
