@@ -7,6 +7,7 @@ THE SLICE MUST ALREADY BE CREATED FOR THIS TO WORK
 
 from fabrictestbed_extensions.fablib.fablib import FablibManager as fablib_manager
 import datetime
+import ntpath
 
 class FabOrchestrator:
     # Constructor, get access to the slice and nodes
@@ -42,19 +43,25 @@ class FabOrchestrator:
             
             yield node
             
-    def executeCommandsParallel(self, command, prefixList=None):
+    def executeCommandsParallel(self, command, prefixList=None, addNodeName=False):
         '''
         Execute a command, in parallel using threads, on all or a subset of remote FABRIC nodes
         '''
-        
-        print(f'Command executed: {command}')
 
         try:
             #Create execute threads
             execute_threads = {}
             for node in self.selectedNodes(prefixList):
-                print(f"Starting command on node {node.get_name()}")
-                execute_threads[node] = node.execute_thread(command)
+                nodeName = node.get_name()
+                if(addNodeName is True):
+                    finalCommand = command.format(name=nodeName)
+                else:
+                    finalCommand = command
+                
+                print(f"Starting command on node {nodeName}")
+                print(f'Command to execute: {finalCommand}')
+                
+                execute_threads[node] = node.execute_thread(finalCommand)
 
             #Wait for results from threads
             for node,thread in execute_threads.items():
@@ -94,6 +101,34 @@ class FabOrchestrator:
             print(f"Exception: {e}")
 
         return    
+    
+    def uploadFileParallel(self, file, remoteLocation=None, prefixList=None):
+        '''
+        '''
+        
+        if(remoteLocation is None):
+            fileName = ntpath.basename(file)
+            remoteLocation = f"/home/rocky/{fileName}"
+        
+        print(f'File to upload: {file}\nPlaced in: {remoteLocation}')
+
+        try:
+            #Create execute threads
+            execute_threads = {}
+            for node in self.selectedNodes(prefixList):
+                print(f"Starting upload on node {node.get_name()}")
+                execute_threads[node] = node.upload_file_thread(file, remoteLocation)
+
+            #Wait for results from threads
+            for node,thread in execute_threads.items():
+                print(f"Waiting for result from node {node.get_name()}")
+                output = thread.result()
+                print(f"Output: {output}")
+
+        except Exception as e:
+            print(f"Exception: {e}")
+
+        return
 
     def saveSSHCommands(self):
         '''
