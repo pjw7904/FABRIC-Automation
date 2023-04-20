@@ -6,6 +6,7 @@ THE SLICE MUST ALREADY BE CREATED FOR THIS TO WORK
 '''
 
 from fabrictestbed_extensions.fablib.fablib import FablibManager as fablib_manager
+from ipaddress import ip_address, IPv4Address, IPv4Network
 import datetime
 import ntpath
 
@@ -130,6 +131,40 @@ class FabOrchestrator:
 
         return
 
+    def downloadFilesParallel(self, localLocation, remoteLocation, prefixList=None, addNodeName=False):
+        '''
+        Download a file
+        '''
+
+        try:
+            #Create execute threads
+            execute_threads = {}
+            for node in self.selectedNodes(prefixList):
+                nodeName = node.get_name()
+                if(addNodeName is True):
+                    finalRemoteLocation = remoteLocation.format(name=nodeName)
+                    finalLocalLocation =  localLocation.format(name=nodeName)
+                else:
+                    finalRemoteLocation = remoteLocation
+                    finalLocalLocation =  localLocation
+
+                print(f"Starting download on node {nodeName}")
+                print(f'File to download: {finalRemoteLocation}')
+                print(f'Location of download: {finalLocalLocation}')
+
+                execute_threads[node] = node.download_file_thread(finalLocalLocation, finalRemoteLocation)
+
+            #Wait for results from threads
+            for node,thread in execute_threads.items():
+                print(f"Waiting for result from node {node.get_name()}")
+                output = thread.result()
+                print(f"Output: {output}")
+
+        except Exception as e:
+            print(f"Exception: {e}")
+
+        return
+    
     def saveSSHCommands(self):
         '''
         Grab the SSH command for each node in the topology and save it to a file in the local directory
@@ -151,3 +186,14 @@ class FabOrchestrator:
         self.slice.renew(endDate)
         
         return
+    
+    def getInterfaceSubnet(self, intfName):
+        '''
+        Return the subnet of an interface in IPv4Network format
+        '''
+        
+        intf = self.slice.get_interface(intfName)
+        
+        subnet = IPv4Network(f"{intf.get_ip_addr()}/24", strict=False)
+        
+        return subnet
