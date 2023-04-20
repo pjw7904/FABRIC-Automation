@@ -1,6 +1,10 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,jupyternotebooks
 
+### MTP and MTP Automation ###
+*/Clos_ssh_cmds.txt
+*/node_config.json
+
 ### JupyterNotebooks ###
 # gitignore template for Jupyter Notebooks
 # website: http://jupyter.org/
