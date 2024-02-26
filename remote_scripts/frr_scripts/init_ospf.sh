@@ -17,7 +17,10 @@ sudo usermod -a -G frr,frrvty $(logname)
 # Install tshark for packet-level inspections and tmux for multiplexing capabilties if necessary.
 sudo dnf install -y tmux wireshark
 
-# A here document to get around the logout/login requirements of adding a group to a user
+# Turn on IP forwarding
+sudo sysctl -w net.ipv4.ip_forward=1
+
+# A "here" document to get around the logout/login requirements of adding a group to a user
 newgrp frr << END
 sudo sed -i 's/ospfd=no/ospfd=yes/g' /etc/frr/daemons
 sudo service frr start
