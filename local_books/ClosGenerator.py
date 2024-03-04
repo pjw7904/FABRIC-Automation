@@ -8,13 +8,13 @@ from copy import deepcopy
 from ipaddress import ip_address, IPv4Address, IPv4Network
 
 class ClosGenerator:
-    # Vertex prefixes to denote position in topology
+    # Vertex prefixes to denote position in topology (TOF = Top of Fabric).
     TOF_NAME = "T"
     SPINE_NAME = "S"
     LEAF_NAME = "L"
     COMPUTE_NAME = "C"
 
-    # Specific tier values
+    # Specific tier values.
     LOWEST_SPINE_TIER = 2
     LEAF_TIER = 1
     COMPUTE_TIER = 0
@@ -40,12 +40,12 @@ class ClosGenerator:
         
     def isNotValidClosInput(self):
         """
-        Checks if the shared degree inputted is an even number. This confirms that the folded-Clos will have a 1:1 oversubscription ratio.
+        Checks if the shared degree inputted is an even number and that the number of tiers is at least 2. This confirms that the folded-Clos will have a 1:1 oversubscription ratio.
 
-        :returns: True or false depending on the shared degree value.
+        :returns: True or false depending on the shared degree and number of tiers value.
         """
 
-        if(self.sharedDegree % 2 != 0):
+        if(self.sharedDegree % 2 != 0 and self.numTiers < 2):
             return True
         else:
             return False
@@ -61,9 +61,9 @@ class ClosGenerator:
 
         if(currentTier == topTier):
             title = self.TOF_NAME    
-        elif(currentTier > 1):
+        elif(currentTier > self.LEAF_TIER):
             title = self.SPINE_NAME
-        elif(currentTier == 1):
+        elif(currentTier == self.LEAF_TIER):
             title = self.LEAF_NAME
         else:
             title = self.COMPUTE_NAME
@@ -78,6 +78,7 @@ class ClosGenerator:
         :param nodeNum: A number associated with that specific node.
         :param currentTier: The folded-Clos tier that is being anaylzed currently.
         :param topTier: The folded-Clos tier at the top of the topology.
+
         :returns: The name given to the node.
         """
 
@@ -98,6 +99,7 @@ class ClosGenerator:
         
         :param prefix: The starting prefix to modify.
         :param addition: Additional value to add to the starting prefix to create a new prefix.
+
         :returns: The new prefix.
         """
 
@@ -126,16 +128,18 @@ class ClosGenerator:
         :param northTier: The tier value N.
         :param southTier: The tier value N-1.
         """
+        
+        # Only add the nodes to the topology if they haven't already been added prior.
         if(northNode not in self.clos):
             self.clos.add_node(northNode, northbound=[], southbound=[], tier=northTier)
         if(southNode not in self.clos):
             self.clos.add_node(southNode, northbound=[], southbound=[], tier=southTier)
-
+        
+        # Note that they are connected to each other in the appropriate direction.
         self.clos.nodes[northNode]["southbound"].append(southNode)
         self.clos.nodes[southNode]["northbound"].append(northNode)
         
-        # self.addProtocolConfig(**kwargs)
-
+        # Add the edge between the two nodes to the topology
         self.clos.add_edge(northNode, southNode)
 
         return
@@ -164,7 +168,7 @@ class ClosGenerator:
 
         while currentTierPrefix:
             currentPrefix = currentTierPrefix.pop(0)
-            print(f"Current prefix: {currentPrefix}")
+            #print(f"Current prefix: {currentPrefix}")
             nodeNum = 0 # The number associated with a given node, appended after the prefix (ex: 1-1-1, pod 1-1, node number 1)
 
             for node in range(1,currentPodNodes+1):
@@ -213,6 +217,37 @@ class ClosGenerator:
                     currentPodNodes = currentPodNodes // (k//2)
 
                 currentTier -= 1 # Now that the current tier is complete, move down to the next one
+        return
+                
+    def getClosStats(self):
+        """
+        Compute stats about the folded-Clos topology built.
+        
+        :returns: A string containing a number of facts about the folded-Clos topology.
+        """
+
+        numTofNodes = (self.sharedDegree//2)**(self.numTiers-1)
+        numServers = 2*((self.sharedDegree//2)**self.numTiers)
+        numSwitches = ((2*self.numTiers)-1)*((self.sharedDegree//2)**(self.numTiers-1))
+        numLeaves = 2*((self.sharedDegree//2)**(self.numTiers-1))
+        
+        if(self.numTiers == 2):
+            numPods = 1
+        else:
+            numPods = 2*((self.sharedDegree//2)**(self.numTiers-2))
+
+        stats = f"Number of ToF Nodes: {numTofNodes}\nNumber of physical servers: {numServers}\nNumber of networking nodes: {numSwitches}\nNumber of leaves: {numLeaves}\nNumber of Pods: {numPods}\n"
+        
+        return stats
+    
+    def getNetworks(self):
+        """
+        Return the edges of the network.
+        
+        :returns: The edges of the network.
+        """
+   
+        return self.clos.edges
 
     def logGraphInfo(self, k, t, topTier):
         """
@@ -256,6 +291,9 @@ class ClosGenerator:
                         
         return
 
+    def getNetworks(self):
+        return self.clos.edges
+
 
 class BGPDCNConfig(ClosGenerator):
     PROTOCOL = "BGP"
@@ -266,13 +304,14 @@ class BGPDCNConfig(ClosGenerator):
     LEAF_SPINE_SUBNET_BITS = 12
     COMPUTE_SUBNET_BITS = 8
 
-    def __init__(self, k, t, name):
+    def __init__(self, k, t, name, singleComputeSubnet=False):
         """
         Initializes a graph and its data structures to hold network information.
 
         :param k: Degree shared by each node.
         :param t: Number of tiers in the graph.
         :param name: The name you want to give the topology.
+        "param singleComputeSubnet: If only one compute subnet should be attached to a leaf node.
         """
 
         # Call superclass constructor to get graph setup
@@ -282,9 +321,14 @@ class BGPDCNConfig(ClosGenerator):
         self.ASNAssignment = {None : None}
         self.currentASN = self.PRIVATE_ASN_RANGE_START
         self.IPAssignment = {}
-
+       
+        # Define the address space for the core and edge networks
         self.coreNetworks = list(IPv4Network(self.LEAF_SPINE_SUPERNET).subnets(prefixlen_diff=self.LEAF_SPINE_SUBNET_BITS))
         self.edgeNetworks = list(IPv4Network(self.COMPUTE_SUPERNET).subnets(prefixlen_diff=self.COMPUTE_SUBNET_BITS))
+        
+        # If only one compute subnet should be hanging off a leaf, then each leaf needs to be given a specific subnet
+        self.singleComputeSubnet = singleComputeSubnet
+        self.leafComputeSubnets = {}
         
     def generateNode(self, prefix, nodeNum, currentTier, topTier):
         """
@@ -294,6 +338,7 @@ class BGPDCNConfig(ClosGenerator):
         :param nodeNum: A number associated with that specific node.
         :param currentTier: The folded-Clos tier that is being anaylzed currently.
         :param topTier: The folded-Clos tier at the top of the topology.
+        
         :returns: The name given to the node.
         """
 
@@ -307,7 +352,7 @@ class BGPDCNConfig(ClosGenerator):
         # Add the unique number given to this node in the pod.
         name = partialName + nodeNum
             
-        # ASN stuff
+
         ASNPrefix = None
 
         # Compute nodes don't get an ASN
@@ -319,7 +364,8 @@ class BGPDCNConfig(ClosGenerator):
             # Spines in a pod get the same ASN
             elif(title == self.TOF_NAME or title == self.SPINE_NAME):
                 ASNPrefix = partialName
-
+            
+            # Only give the node a new ASN if its a new spine pod or a leaf.
             if(ASNPrefix not in self.ASNAssignment):
                 self.ASNAssignment[ASNPrefix] = self.currentASN
                 self.currentASN += 1
@@ -343,32 +389,86 @@ class BGPDCNConfig(ClosGenerator):
         """
 
         NEXT_SUBNET = 0
+        isComputeNetwork = False
 
-        # If one of the nodes is a compute node, this is an edge network.
+        # If one of the nodes is a compute node, this is an edge network (compute-leaf).
         if(southTier == self.COMPUTE_TIER):
-            subnet = list(self.edgeNetworks.pop(NEXT_SUBNET))[:-1] # Remove broadcast address
+            self.addressEdgeNodes(northNode, southNode)
+            isComputeNetwork = True
+
+        # Otherwise, it is a core network (leaf-spine or spine-spine).
         else:
-            subnet = list(self.coreNetworks.pop(NEXT_SUBNET))[1:-1] # Remove network and broadcast address
-
-        # Assign IP addressing
-        if(northTier == self.LEAF_TIER):
-            networkAddress = subnet.pop(0)
-            northAddress = subnet.pop()
-            self.clos.nodes[northNode]["advertise"].append(f"{networkAddress}/24")
-        else:
-            northAddress = subnet.pop(0)
-
-        southAddress = subnet.pop(0)
-
+            self.addressCoreNodes(northNode, southNode)
+        
+        # Log the new information given to each node.
         self.clos.nodes[northNode]["southbound"].append(southNode)
         self.clos.nodes[northNode]["tier"] = northTier
-        self.clos.nodes[northNode]["ipv4"][southNode] = str(northAddress)
 
         self.clos.nodes[southNode]["northbound"].append(northNode)
         self.clos.nodes[southNode]["tier"] = southTier
+        
+        # Add the edge to the topology, while also noting the type of network.
+        self.clos.add_edge(northNode, southNode, computeNetwork=isComputeNetwork)
+
+        return
+
+    def addressEdgeNodes(self, northNode, southNode):
+        """
+        Provide IPv4 addressing to nodes on edge networks (leaf-compute).
+
+        :param northNode: The node in tier N.
+        :param southNode: The node in tier N-1.
+        """
+        
+        NEXT_SUBNET = 0
+
+        # If a single compute subnet is already defined for the leaf, reuse it and don't generate a new edge subnet. 
+        if(northNode in self.leafComputeSubnets):
+            subnet = self.leafComputeSubnets[northNode]
+            self.clos.nodes[northNode]["ipv4"][southNode] = self.clos.nodes[northNode]["ipv4"]["compute_subnet"]
+
+        else:
+            # Get next available edge subnet.
+            subnet = list(self.edgeNetworks.pop(NEXT_SUBNET))[:-1] # Remove broadcast address.
+
+            networkAddress = subnet.pop(0) # Grab the network address to be advertised by BGP.
+            northAddress = subnet.pop() # Grab the last host address for the leaf node on the network.
+
+            # Add addressing information to leaf node.
+            self.clos.nodes[northNode]["advertise"].append(f"{networkAddress}/24")
+            self.clos.nodes[northNode]["ipv4"][southNode] = str(northAddress)
+
+            # Determine if an edge subnet needs to be reused.
+            if(self.singleComputeSubnet):
+                self.leafComputeSubnets[northNode] = subnet
+                self.clos.nodes[northNode]["ipv4"]["compute_subnet"] = str(northAddress)
+
+        southAddress = subnet.pop(0) # Grab the next available low host address for the compute node on the network.
+
+        # Add addressing information to compute node.
         self.clos.nodes[southNode]["ipv4"][northNode] = str(southAddress)
 
-        self.clos.add_edge(northNode, southNode)
+        return
+
+    def addressCoreNodes(self, northNode, southNode):
+        """
+        Provide IPv4 addressing to nodes on core networks (leaf-spine or spine-spine).
+
+        :param northNode: The node in tier N.
+        :param southNode: The node in tier N-1.
+        """
+        
+        NEXT_SUBNET = 0
+ 
+        # Get next available core subnet.
+        subnet = list(self.coreNetworks.pop(NEXT_SUBNET))[1:-1] # Remove network and broadcast address.
+
+        northAddress = subnet.pop(0) # Grab the next available low host address.
+        southAddress = subnet.pop(0)
+
+        # Add addressing information to core nodes.
+        self.clos.nodes[northNode]["ipv4"][southNode] = str(northAddress)
+        self.clos.nodes[southNode]["ipv4"][northNode] = str(southAddress)
 
         return
 
