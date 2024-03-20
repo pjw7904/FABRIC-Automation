@@ -22,7 +22,7 @@ class ClosGenerator:
     # To be filled in by subclasses built for a specific network protocol.
     PROTOCOL = None
 
-    def __init__(self, k, t, name):
+    def __init__(self, k, t):
         """
         Initializes a graph and its data structures to hold network information.
 
@@ -35,8 +35,6 @@ class ClosGenerator:
         
         self.sharedDegree = k
         self.numTiers = t
-
-        self.name = name
         
     def isNotValidClosInput(self):
         """
@@ -249,7 +247,29 @@ class ClosGenerator:
    
         return self.clos.edges
 
-    def logGraphInfo(self, k, t, topTier):
+    def getNodes(self):
+        """
+        Return the nodes of the network.
+        
+        :returns: The nodes of the network.
+        """
+        
+        return self.clos.nodes
+
+    def iterNodes(self, noComputeNodes=False):
+        for node in self.getNodes():
+            if(noComputeNodes and not self.isNetworkNode(node)):
+                continue
+            else:
+                yield node
+
+    def isNetworkNode(self, node):
+        return self.clos.nodes[node]["tier"] > self.COMPUTE_TIER
+    
+    def getNodeAttribute(self, node, attribute, subattribute=None):
+        return self.clos.nodes[node][attribute] if subattribute is None else self.clos.nodes[node][attribute][subattribute]
+
+    def logGraphInfo(self):
         """
         Output folded-Clos topology information into a log file.
         
@@ -257,6 +277,10 @@ class ClosGenerator:
         :param t: Number of tiers in the graph.
         :param topTier: The folded-Clos tier at the top of the topology.
         """
+        
+        k = self.sharedDegree
+        t = self.numTiers
+        topTier = t
 
         numTofNodes = (k//2)**(t-1)
         numServers = 2*((k//2)**t)
@@ -264,7 +288,7 @@ class ClosGenerator:
         numLeaves = 2*((k//2)**(t-1))
         numPods = 2*((k//2)**(t-2))
         
-        with open(f'{k}_{t}_{self.name}.log', 'w') as logFile:
+        with open(f'clos_k{self.sharedDegree}_t{self.numTiers}.log', 'w') as logFile:
             logFile.write("=============\nFOLDED CLOS\nk = {k}, t = {t}\n{k}-port devices with {t} tiers.\n=============\n".format(k=k, t=t))
 
             logFile.write("Number of ToF Nodes: {}\n".format(numTofNodes))
@@ -290,10 +314,27 @@ class ClosGenerator:
                         logFile.write("\t\t{}\n".format(s))
                         
         return
+    
+    def saveAsGraphml(self):
+        SMALL_PADDING = " " * 2
+        LARGE_PADDING = " " * 4
+        
+        with open(f'clos_k{self.sharedDegree}_t{self.numTiers}.graphml', 'w') as graphmlFile:
+            graphmlFile.write("<?xml version='1.0' encoding='utf-8'?>\n")
+            graphmlFile.write('<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">\n')
+            graphmlFile.write(f'{SMALL_PADDING}<graph edgedefault="undirected">\n')
+            
+            # Fill in the nodes first
+            for node in self.getNodes():
+                graphmlFile.write(f'{LARGE_PADDING}<node id="{node}" />\n'.rjust(4))
 
-    def getNetworks(self):
-        return self.clos.edges
-
+            # Then the edges
+            for node in self.getNetworks():
+                graphmlFile.write(f'{LARGE_PADDING}<edge source="{node[0]}" target="{node[1]}" />\n')
+                
+            graphmlFile.write(f"{SMALL_PADDING}</graph>\n</graphml>")
+        
+        return
 
 class BGPDCNConfig(ClosGenerator):
     PROTOCOL = "BGP"
@@ -304,7 +345,7 @@ class BGPDCNConfig(ClosGenerator):
     LEAF_SPINE_SUBNET_BITS = 12
     COMPUTE_SUBNET_BITS = 8
 
-    def __init__(self, k, t, name, singleComputeSubnet=False):
+    def __init__(self, k, t, singleComputeSubnet=False):
         """
         Initializes a graph and its data structures to hold network information.
 
@@ -315,7 +356,7 @@ class BGPDCNConfig(ClosGenerator):
         """
 
         # Call superclass constructor to get graph setup
-        super().__init__(k, t, name)
+        super().__init__(k, t)
 
         # Configure how BGP will assign ASNs and IPv4 addressing
         self.ASNAssignment = {None : None}
@@ -425,7 +466,7 @@ class BGPDCNConfig(ClosGenerator):
         # If a single compute subnet is already defined for the leaf, reuse it and don't generate a new edge subnet. 
         if(northNode in self.leafComputeSubnets):
             subnet = self.leafComputeSubnets[northNode]
-            self.clos.nodes[northNode]["ipv4"][southNode] = self.clos.nodes[northNode]["ipv4"]["compute_subnet"]
+            #self.clos.nodes[northNode]["ipv4"][southNode] = self.clos.nodes[northNode]["ipv4"]["compute"]
 
         else:
             # Get next available edge subnet.
@@ -434,14 +475,16 @@ class BGPDCNConfig(ClosGenerator):
             networkAddress = subnet.pop(0) # Grab the network address to be advertised by BGP.
             northAddress = subnet.pop() # Grab the last host address for the leaf node on the network.
 
-            # Add addressing information to leaf node.
+            # Add subnet advertisement information to leaf node.
             self.clos.nodes[northNode]["advertise"].append(f"{networkAddress}/24")
-            self.clos.nodes[northNode]["ipv4"][southNode] = str(northAddress)
 
-            # Determine if an edge subnet needs to be reused.
+            # Determine if an edge subnet needs to be reused and add addressing information to leaf node.
             if(self.singleComputeSubnet):
                 self.leafComputeSubnets[northNode] = subnet
-                self.clos.nodes[northNode]["ipv4"]["compute_subnet"] = str(northAddress)
+                self.clos.nodes[northNode]["ipv4"]["compute"] = str(northAddress)
+            else:
+                self.clos.nodes[northNode]["ipv4"][southNode] = str(northAddress)
+
 
         southAddress = subnet.pop(0) # Grab the next available low host address for the compute node on the network.
 
@@ -518,3 +561,57 @@ class BGPDCNConfig(ClosGenerator):
                         logFile.write(f"\t\t{s} - {addr}\n")
                         
         return
+
+    def isNetworkNode(self, node):
+        return False if node == "compute" else self.clos.nodes[node]["tier"] > self.COMPUTE_TIER
+
+    def iterNetwork(self, fabricFormating=False):
+        """
+        Iterator for the networks in the folded-Clos topology. 
+        For core networks, this means every edge is its own network. For edge networks, it is either every edge, or its all edges connected to the same leaf if a single subnet is defined. 
+        
+        :return: Yield the current network.
+        """
+
+        processedleafNodes = set()
+        
+        for network in self.getNetworks():
+            networkType = "edge" if self.clos.edges[network]["computeNetwork"] else "core"
+            
+            if(networkType == "core" or self.singleComputeSubnet == False):
+                yield (network, self.generateFabricNetworkName(network, networkType)) if fabricFormating else network
+
+            else:
+                leaf = network[0] if network[0].startswith(self.LEAF_NAME) else network[1]
+
+                if(leaf not in processedleafNodes):
+
+                    # Get the leaf southbound and then convert to tuple
+                    computeNetwork = (leaf,) + tuple(self.clos.nodes[leaf]["southbound"])
+
+                    processedleafNodes.add(leaf)
+                    
+                    yield (computeNetwork, self.generateFabricNetworkName(network, networkType)) if fabricFormating else computeNetwork
+
+    def generateFabricNetworkName(self, network, networkType):
+        if(networkType == "edge" and self.singleComputeSubnet == True):
+            name = f"edge-{network[0]}-compute" # network[0] will always be the leaf when iterNetwork is called
+        else:
+            if(self.clos.nodes[network[0]]["tier"] > self.clos.nodes[network[1]]["tier"]):
+                name = f"core-{network[0]}-{network[1]}"
+            else:
+                name = f"core-{network[1]}-{network[0]}"
+
+        return name
+
+    def generateFabricIntfName(self, node, network):
+        otherNode = network[1] if network[0] == node else network[0]
+
+        if(self.clos.nodes[node]["tier"] == self.LEAF_TIER and self.clos.nodes[otherNode]["tier"] == self.COMPUTE_TIER and self.singleComputeSubnet == True):
+            #intfName = f"{node}-intf-compute"
+            intfName = f"intf-compute"
+        else:
+            #intfName = f"{node}-intf-{otherNode}"
+            intfName = f"intf-{otherNode}"
+
+        return intfName
