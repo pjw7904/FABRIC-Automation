@@ -515,7 +515,7 @@ class BGPDCNConfig(ClosGenerator):
 
         return
 
-    def logGraphInfo(self, k, t, topTier):
+    def logGraphInfo(self):
         """
         Output folded-Clos topology information into a log file.
         
@@ -523,6 +523,10 @@ class BGPDCNConfig(ClosGenerator):
         :param t: Number of tiers in the graph.
         :param topTier: The folded-Clos tier at the top of the topology.
         """
+        
+        k = self.sharedDegree
+        t = self.numTiers
+        topTier = t
 
         numTofNodes = (k//2)**(t-1)
         numServers = 2*((k//2)**t)
@@ -530,7 +534,7 @@ class BGPDCNConfig(ClosGenerator):
         numLeaves = 2*((k//2)**(t-1))
         numPods = 2*((k//2)**(t-2))
         
-        with open(f'{k}_{t}_BGP.log', 'w') as logFile:
+        with open(f'clos_k{self.sharedDegree}_t{self.numTiers}_BGP.log', 'w') as logFile:
             logFile.write("=============\nFOLDED CLOS\nk = {k}, t = {t}\n{k}-port devices with {t} tiers.\n=============\n".format(k=k, t=t))
 
             logFile.write("Number of ToF Nodes: {}\n".format(numTofNodes))
@@ -554,11 +558,14 @@ class BGPDCNConfig(ClosGenerator):
                         logFile.write(f"\t\t{n} - {addr}\n")
                         
                     logFile.write("\n\tsouthbound:\n")
-                    
-                    for s in self.clos.nodes[node]["southbound"]:
-                        #logFile.write("\t\t{}\n".format(s))
-                        addr = self.clos.nodes[node]["ipv4"][s]
-                        logFile.write(f"\t\t{s} - {addr}\n")
+
+                    if(tier == self.LEAF_TIER and self.singleComputeSubnet):
+                        addr = self.clos.nodes[node]["ipv4"]["compute"]
+                        logFile.write(f"\t\tcompute - {addr}\n")
+                    else:
+                        for s in self.clos.nodes[node]["southbound"]:                        
+                            addr = self.clos.nodes[node]["ipv4"][s]
+                            logFile.write(f"\t\t{s} - {addr}\n")
                         
         return
 
