@@ -5,7 +5,8 @@ Desc: Class to help build Clos topologies and the node attributes required.
 
 import networkx as nx
 from copy import deepcopy
-from ipaddress import ip_address, IPv4Address, IPv4Network
+from ipaddress import IPv4Network
+from collections import defaultdict
 
 class ClosGenerator:
     # Vertex prefixes to denote position in topology (TOF = Top of Fabric).
@@ -22,20 +23,31 @@ class ClosGenerator:
     # To be filled in by subclasses built for a specific network protocol.
     PROTOCOL = None
 
-    def __init__(self, k, t):
+    def __init__(self, k, t, southboundPortsConfig=None):
         """
         Initializes a graph and its data structures to hold network information.
 
         :param k: Degree shared by each node.
         :param t: Number of tiers in the graph.
-        :param name: The name you want to give the topology.
+        :param southboundPortsConfig: Custom override for the number of southbound interfaces for devices at a given set of tiers
         """
 
         self.clos = nx.Graph(topTier=t)
         
         self.sharedDegree = k
         self.numTiers = t
-        
+
+        # Check to make sure the input is valid, return an error if not
+        if(self.isNotValidClosInput()):
+            raise ValueError("Invalid Clos input (must be equal number of north and south links)")
+
+        # Set up the number of southbound ports, either the default, a user provided dictonary, or a combination of both.
+        self.southboundPorts = defaultdict(lambda: k//2)
+        self.southboundPorts[t] = k # The top-tier has all of its ports southbound.
+
+        if(southboundPortsConfig):
+            self.setSouthboundPorts(southboundPortsConfig)
+
     def isNotValidClosInput(self):
         """
         Checks if the shared degree inputted is an even number and that the number of tiers is at least 2. This confirms that the folded-Clos will have a 1:1 oversubscription ratio.
@@ -47,6 +59,17 @@ class ClosGenerator:
             return True
         else:
             return False
+
+    def setSouthboundPorts(self, customPorts):
+        """
+        Set a custom number of southbound ports for specific tiers. 
+
+        :param customPorts: A dictionary mapping tier numbers to the desired number of southbound ports.
+        """
+        for tier, ports in customPorts.items():
+            self.southboundPorts[tier] = ports
+
+        return
 
     def getNodeTitle(self, currentTier, topTier):
         """
@@ -142,37 +165,35 @@ class ClosGenerator:
 
         return
 
-    
     def buildGraph(self):
         """
-        Build a folded-Clos with t tiers and each node containing k interfaces. It is built using a modified BFS algorithm, starting with the top tier of the spines and working its way down to the leaf nodes and compute nodes.
+        Build a folded-Clos with t tiers and each node containing k interfaces. It is built using a modified BFS algorithm, 
+        starting with the top tier of the spines and working its way down to the leaf nodes and compute nodes.
         """
 
         k = self.sharedDegree
         t = self.numTiers
-        
-        # Check to make sure the input is valid, return an error if not
-        if(self.isNotValidClosInput()):
-            raise ValueError("Invalid Clos input (must be equal number of north and south links)")
-            
+
         currentTierPrefix = [""] # Queue for current prefix being connected to a southern prefix
         nextTierPrefix = [] # Queue for the prefixes of the tier directly south of the current tier
 
-        currentPodNodes = (k//2)**(t-1) # Number of top-tier nodes
+        currentPodNodes = (k//2)**(t-1) # Number of top-tier nodes to start, but will shrink at lower tiers
         topTier = t # The starting tier, and the highest tier in the topology
         currentTier = t # Tracking the tiers as it iterates down them
 
-        southboundPorts = k # Start with top-tier having all southbound ports
-
         while currentTierPrefix:
             currentPrefix = currentTierPrefix.pop(0)
-            #print(f"Current prefix: {currentPrefix}")
+
             nodeNum = 0 # The number associated with a given node, appended after the prefix (ex: 1-1-1, pod 1-1, node number 1)
 
             for node in range(1,currentPodNodes+1):
+                # Determine the name of the current node at the current tier
                 northNode = self.generateNode(currentPrefix, str(node), currentTier, topTier)
 
-                for intf in range(1, southboundPorts+1):
+                # Get the number of southbound ports for this tier and add 1 because range is exclusive.
+                portRange = self.southboundPorts[currentTier] + 1
+
+                for intf in range(1, portRange):
                     # Per BFS logic, mark the neighbor as visited if it has not already and add it to the queue.
 
                     # All tiers > 2.
@@ -202,13 +223,9 @@ class ClosGenerator:
                 currentTierPrefix = deepcopy(nextTierPrefix)
                 nextTierPrefix.clear()
 
-                # If the top tier was just connected with its southbound neighbors
-                if(currentTier == topTier):
-                    southboundPorts = k//2 # All tiers except the top have half of their ports southbound
-
-                    # Proper distribution of links for 2-tier topologies
-                    if(topTier == self.LOWEST_SPINE_TIER):
-                        currentPodNodes = k
+                # Proper distribution of links for 2-tier topologies
+                if(currentTier == topTier and topTier == self.LOWEST_SPINE_TIER):
+                    currentPodNodes = k
 
                 # The number of connections in the next tier below will be cut down appropriately
                 if(currentTier > self.LOWEST_SPINE_TIER):
@@ -272,10 +289,6 @@ class ClosGenerator:
     def logGraphInfo(self):
         """
         Output folded-Clos topology information into a log file.
-        
-        :param k: Degree shared by each node.
-        :param t: Number of tiers in the graph.
-        :param topTier: The folded-Clos tier at the top of the topology.
         """
         
         k = self.sharedDegree
