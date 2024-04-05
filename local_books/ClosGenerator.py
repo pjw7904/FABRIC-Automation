@@ -358,7 +358,7 @@ class BGPDCNConfig(ClosGenerator):
     LEAF_SPINE_SUBNET_BITS = 12
     COMPUTE_SUBNET_BITS = 8
 
-    def __init__(self, k, t, singleComputeSubnet=False):
+    def __init__(self, k, t, southboundPortsConfig=None, singleComputeSubnet=False):
         """
         Initializes a graph and its data structures to hold network information.
 
@@ -369,7 +369,7 @@ class BGPDCNConfig(ClosGenerator):
         """
 
         # Call superclass constructor to get graph setup
-        super().__init__(k, t)
+        super().__init__(k, t, southboundPortsConfig)
 
         # Configure how BGP will assign ASNs and IPv4 addressing
         self.ASNAssignment = {None : None}
@@ -432,7 +432,7 @@ class BGPDCNConfig(ClosGenerator):
         return name
    
     # Have the origional add **kwags so you can add the prefix?
-    def connectNodes(self, northNode, southNode, northTier, southTier, **kwargs):
+    def connectNodes(self, northNode, southNode, northTier, southTier):
         """
         Connect two nodes together via an edge. Also configure the BGP ASN number and IP addressing.
 
@@ -442,7 +442,6 @@ class BGPDCNConfig(ClosGenerator):
         :param southTier: The tier value N-1.
         """
 
-        NEXT_SUBNET = 0
         isComputeNetwork = False
 
         # If one of the nodes is a compute node, this is an edge network (compute-leaf).
