@@ -66,10 +66,11 @@ class FabOrchestrator:
 
             #Wait for results from threads
             for node,thread in execute_threads.items():
-                print(f"Waiting for result from node {node.get_name()}")
+                print(f"\n==== {node.get_name()} RESULTS ====")
+                
                 stdout,stderr = thread.result()
-                print(f"stdout: {stdout}")
-                print(f"stderr: {stderr}")
+                print(f"stdout:\n{stdout}")
+                print(f"stderr:\n{stderr}")
 
         except Exception as e:
             print(f"Exception: {e}")
