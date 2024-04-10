@@ -1,6 +1,11 @@
-log syslog informational
+log file /var/log/frr/bgpd.log
+log timestamp precision 3
+!
+debug bgp updates in
+debug bgp updates out
 !
 router bgp ${bgp_asn}
+ timers bgp 1 3
 % for neighbor in neighbors:
  neighbor ${neighbor["ip"]} remote-as ${neighbor["asn"]}
 % endfor
