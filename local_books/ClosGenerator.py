@@ -140,7 +140,7 @@ class ClosGenerator:
         return
 
     
-    def connectNodes(self, northNode, southNode, northTier, southTier, **kwargs):
+    def connectNodes(self, northNode, southNode, northTier, southTier):
         """
         Connect two nodes together via an edge. The nodes must be in adjacent tiers (ex: tier 2 and tier 3). The nodes also understand if their new neighbor is above them (northbound) or below them (southbound). Subclasses specific to a protocol should override this method with its specific attribute needs beyond north-south interconnection. This base method is provided to simply view the output of a given folded-Clos topology.
 
@@ -374,7 +374,6 @@ class BGPDCNConfig(ClosGenerator):
         # Configure how BGP will assign ASNs and IPv4 addressing
         self.ASNAssignment = {None : None}
         self.currentASN = self.PRIVATE_ASN_RANGE_START
-        self.IPAssignment = {}
        
         # Define the address space for the core and edge networks
         self.coreNetworks = list(IPv4Network(self.LEAF_SPINE_SUPERNET).subnets(prefixlen_diff=self.LEAF_SPINE_SUBNET_BITS))
@@ -405,7 +404,6 @@ class BGPDCNConfig(ClosGenerator):
 
         # Add the unique number given to this node in the pod.
         name = partialName + nodeNum
-            
 
         ASNPrefix = None
 
@@ -431,7 +429,6 @@ class BGPDCNConfig(ClosGenerator):
         # Return just the name, not the node object iself
         return name
    
-    # Have the origional add **kwags so you can add the prefix?
     def connectNodes(self, northNode, southNode, northTier, southTier):
         """
         Connect two nodes together via an edge. Also configure the BGP ASN number and IP addressing.
@@ -637,3 +634,213 @@ class BGPDCNConfig(ClosGenerator):
             intfName = f"intf-{otherNode}"
 
         return intfName
+    
+
+class MTPConfig(ClosGenerator):
+    PROTOCOL = "MTP"
+
+    COMPUTE_SUPERNET = '192.168.0.0/16'
+    COMPUTE_SUBNET_BITS = 8
+
+    def __init__(self, k, t, singleComputeSubnet=False, **kwargs):
+        """
+        Initializes a graph and its data structures to hold network information.
+
+        :param k: Degree shared by each node.
+        :param t: Number of tiers in the graph.
+        :param name: The name you want to give the topology.
+        "param singleComputeSubnet: If only one compute subnet should be attached to a leaf node.
+        """
+
+        # Call superclass constructor to get graph setup
+        super().__init__(k, t, **kwargs)
+
+        # Define the address space for the core and edge networks
+        self.edgeNetworks = list(IPv4Network(self.COMPUTE_SUPERNET).subnets(prefixlen_diff=self.COMPUTE_SUBNET_BITS))
+        
+        # If only one compute subnet should be hanging off a leaf, then each leaf needs to be given a specific subnet
+        self.singleComputeSubnet = singleComputeSubnet
+        self.leafComputeSubnets = {}    
+        
+    def connectNodes(self, northNode, southNode, northTier, southTier):
+        """
+        Connect two nodes together via an edge. The nodes must be in adjacent tiers (ex: tier 2 and tier 3). 
+        The nodes also understand if their new neighbor is above them (northbound) or below them (southbound). 
+
+        :param northNode: The node in tier N.
+        :param southNode: The node in tier N-1.
+        :param northTier: The tier value N.
+        :param southTier: The tier value N-1.
+        """
+        
+        # Only add the nodes to the topology if they haven't already been added prior.
+        if(northNode not in self.clos):
+            self.clos.add_node(northNode, 
+                               northbound=[], 
+                               southbound=[], 
+                               tier=northTier, 
+                               ipv4=defaultdict(lambda: "MTP"), 
+                               isTopTier="true" if self.numTiers == northTier else "false")
+        if(southNode not in self.clos):
+            self.clos.add_node(southNode, 
+                               northbound=[], 
+                               southbound=[], 
+                               tier=southTier, 
+                               ipv4=defaultdict(lambda: "MTP"), 
+                               isTopTier="false")
+        
+        # Mark each other as neighbors in their appropriate direction.
+        self.clos.nodes[northNode]["southbound"].append(southNode)
+        self.clos.nodes[southNode]["northbound"].append(northNode)
+
+        # If one of the nodes is a compute node, this is an edge network (compute-leaf).
+        isComputeNetwork = False
+        if(southTier == self.COMPUTE_TIER):
+            isComputeNetwork = True
+            self.addressEdgeNodes(northNode, southNode)
+                 
+        # Add the edge between the two nodes to the topology
+        self.clos.add_edge(northNode, southNode, computeNetwork=isComputeNetwork)
+
+        return
+    
+    def addressEdgeNodes(self, northNode, southNode):
+        """
+        Provide IPv4 addressing to nodes on edge networks (leaf-compute).
+
+        :param northNode: The node in tier N.
+        :param southNode: The node in tier N-1.
+        """
+        
+        NEXT_SUBNET = 0
+
+        # If a single compute subnet is already defined for the leaf, reuse it and don't generate a new edge subnet. 
+        if(northNode in self.leafComputeSubnets):
+            subnet = self.leafComputeSubnets[northNode]
+        else:
+            # Get next available edge subnet.
+            subnet = list(self.edgeNetworks.pop(NEXT_SUBNET))[1:-1] # Remove network and broadcast address.
+
+            northAddress = subnet.pop() # Grab the last host address for the leaf node on the network.
+
+            # Determine if an edge subnet needs to be reused and add addressing information to leaf node.
+            if(self.singleComputeSubnet):
+                self.leafComputeSubnets[northNode] = subnet
+                self.clos.nodes[northNode]["ipv4"]["compute"] = str(northAddress)
+            else:
+                self.clos.nodes[northNode]["ipv4"][southNode] = str(northAddress)
+
+        southAddress = subnet.pop(0) # Grab the next available low host address for the compute node on the network.
+
+        # Add addressing information to compute node.
+        self.clos.nodes[southNode]["ipv4"][northNode] = str(southAddress)
+
+        return
+    
+    def isNetworkNode(self, node):
+        return False if node == "compute" else self.clos.nodes[node]["tier"] > self.COMPUTE_TIER
+
+    def iterNetwork(self, fabricFormating=False):
+        """
+        Iterator for the networks in the folded-Clos topology. 
+        For core networks, this means every edge is its own network. 
+        For edge networks, it is either every edge, or its all edges connected to the same leaf if a single subnet is defined. 
+        
+        :return: Yield the current network.
+        """
+
+        processedleafNodes = set()
+        
+        for network in self.getNetworks():
+            networkType = "edge" if self.clos.edges[network]["computeNetwork"] else "core"
+            
+            if(networkType == "core" or self.singleComputeSubnet == False):
+                yield (network, self.generateFabricNetworkName(network, networkType)) if fabricFormating else network
+
+            else:
+                leaf = network[0] if network[0].startswith(self.LEAF_NAME) else network[1]
+
+                if(leaf not in processedleafNodes):
+
+                    # Get the leaf southbound and then convert to tuple
+                    computeNetwork = (leaf,) + tuple(self.clos.nodes[leaf]["southbound"])
+
+                    processedleafNodes.add(leaf)
+                    
+                    yield (computeNetwork, self.generateFabricNetworkName(network, networkType)) if fabricFormating else computeNetwork
+
+    def generateFabricNetworkName(self, network, networkType):
+        if(networkType == "edge"): 
+            if(self.singleComputeSubnet == True):
+                name = f"edge-{network[0]}-compute" # network[0] will always be the leaf when iterNetwork is called
+            else:
+                name = f"edge-{network[0]}-{network[1]}"
+        else:
+            if(self.clos.nodes[network[0]]["tier"] > self.clos.nodes[network[1]]["tier"]):
+                name = f"core-{network[0]}-{network[1]}"
+            else:
+                name = f"core-{network[1]}-{network[0]}"
+
+        return name
+
+    def generateFabricIntfName(self, node, network):
+        otherNode = network[1] if network[0] == node else network[0]
+
+        if(self.clos.nodes[node]["tier"] == self.LEAF_TIER and self.clos.nodes[otherNode]["tier"] == self.COMPUTE_TIER and self.singleComputeSubnet == True):
+            intfName = f"intf-compute"
+        else:
+            intfName = f"intf-{otherNode}"
+
+        return intfName
+    
+    def logGraphInfo(self):
+        """
+        Output folded-Clos topology information into a log file.
+        
+        :param k: Degree shared by each node.
+        :param t: Number of tiers in the graph.
+        :param topTier: The folded-Clos tier at the top of the topology.
+        """
+        
+        k = self.sharedDegree
+        t = self.numTiers
+        topTier = t
+
+        numTofNodes = (k//2)**(t-1)
+        numServers = 2*((k//2)**t)
+        numSwitches = ((2*t)-1)*((k//2)**(t-1))
+        numLeaves = 2*((k//2)**(t-1))
+        numPods = 2*((k//2)**(t-2))
+        
+        with open(f'clos_k{self.sharedDegree}_t{self.numTiers}_MTP.log', 'w') as logFile:
+            logFile.write("=============\nMTP FOLDED CLOS\nk = {k}, t = {t}\n{k}-port devices with {t} tiers.\n=============\n".format(k=k, t=t))
+
+            logFile.write("Number of ToF Nodes: {}\n".format(numTofNodes))
+            logFile.write("Number of physical servers: {}\n".format(numServers))
+            logFile.write("Number of networking nodes: {}\n".format(numSwitches))
+            logFile.write("Number of leaves: {}\n".format(numLeaves))
+            logFile.write("Number of Pods: {}\n".format(numPods))
+
+            for tier in reversed(range(topTier+1)):
+                nodes = [v for v in self.clos if self.clos.nodes[v]["tier"] == tier]
+                logFile.write(f"\n== TIER {tier} ==\n")
+
+                for node in sorted(nodes):
+                    logFile.write(node)
+                    logFile.write(f'\n\tisTopTier = {self.clos.nodes[node]["isTopTier"]}')
+                    
+                    logFile.write("\n\tnorthbound:\n")
+                    for n in self.clos.nodes[node]["northbound"]:
+                        addr = self.clos.nodes[node]["ipv4"][n]
+                        logFile.write(f"\t\t{n} - {addr}\n")
+                        
+                    logFile.write("\n\tsouthbound:\n")
+                    if(tier == self.LEAF_TIER and self.singleComputeSubnet):
+                        addr = self.clos.nodes[node]["ipv4"]["compute"]
+                        logFile.write(f"\t\tcompute - {addr}\n")
+                    else:
+                        for s in self.clos.nodes[node]["southbound"]:                        
+                            addr = self.clos.nodes[node]["ipv4"][s]
+                            logFile.write(f"\t\t{s} - {addr}\n")
+
+        return
