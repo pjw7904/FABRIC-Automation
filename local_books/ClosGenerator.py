@@ -327,7 +327,38 @@ class ClosGenerator:
                         logFile.write("\t\t{}\n".format(s))
                         
         return
-    
+
+    def jsonGraphInfo(self):
+        '''
+        Get a JSON-formatted output of the graph information
+        
+        :returns: JSON object containing the folded-Clos configuration.
+        '''
+
+        jsonData = {"sharedDegree": self.sharedDegree, 
+                    "numTiers": self.numTiers,
+                    "numTofNodes": (self.sharedDegree//2)**(self.numTiers-1),
+                    "numServers": 2*((self.sharedDegree//2)**self.numTiers),
+                    "numSwitches": ((2*self.numTiers)-1)*((self.sharedDegree//2)**(self.numTiers-1)),
+                    "numLeaves": 2*((self.sharedDegree//2)**(self.numTiers-1)),
+                    "numPods": 2*((self.sharedDegree//2)**(self.numTiers-2))}
+
+        for tier in reversed(range(self.numTiers+1)):
+            nodes = [v for v in self.clos if self.clos.nodes[v]["tier"] == tier]
+            jsonData[f"tier_{tier}"] = {}
+
+            for node in sorted(nodes):
+                jsonData[f"tier_{tier}"][node] = {"northbound": [], "southbound": []}
+
+                for northNode in self.clos.nodes[node]["northbound"]:
+                    jsonData[f"tier_{tier}"][node]["northbound"].append(northNode)
+
+                for southNode in self.clos.nodes[node]["southbound"]:
+                    jsonData[f"tier_{tier}"][node]["southbound"].append(southNode)
+
+
+        return jsonData
+
     def saveAsGraphml(self):
         SMALL_PADDING = " " * 2
         LARGE_PADDING = " " * 4
@@ -578,6 +609,50 @@ class BGPDCNConfig(ClosGenerator):
                         
         return
 
+    def jsonGraphInfo(self):
+        '''
+        Get a JSON-formatted output of the graph information
+        
+        :returns: JSON object containing the folded-Clos configuration.
+        '''
+
+        jsonData = {"sharedDegree": self.sharedDegree, 
+                    "numTiers": self.numTiers,
+                    "numTofNodes": (self.sharedDegree//2)**(self.numTiers-1),
+                    "numServers": 2*((self.sharedDegree//2)**self.numTiers),
+                    "numSwitches": ((2*self.numTiers)-1)*((self.sharedDegree//2)**(self.numTiers-1)),
+                    "numLeaves": 2*((self.sharedDegree//2)**(self.numTiers-1)),
+                    "numPods": 2*((self.sharedDegree//2)**(self.numTiers-2))}
+
+        for tier in reversed(range(self.numTiers+1)):
+            nodes = [v for v in self.clos if self.clos.nodes[v]["tier"] == tier]
+            jsonData[f"tier_{tier}"] = {}
+
+            for node in sorted(nodes):
+                asn = self.clos.nodes[node]["ASN"]
+                jsonData[f"tier_{tier}"][node] = {f"ASN": asn,
+                                                  "advertisedRoutes": [],
+                                                  "northbound": [], 
+                                                  "southbound": []}
+                
+                for route in self.clos.nodes[node]["advertise"]:
+                    jsonData[f"tier_{tier}"][node]["advertisedRoutes"].append(route)
+
+                for northNode in self.clos.nodes[node]["northbound"]:
+                    addr = self.clos.nodes[node]["ipv4"][northNode]
+                    jsonData[f"tier_{tier}"][node]["northbound"].append(f"{northNode} - {addr}")
+
+                if(tier == self.LEAF_TIER and self.singleComputeSubnet):
+                    addr = self.clos.nodes[node]["ipv4"]["compute"]
+                    logFile.write(f"\t\tcompute - {addr}\n")
+                    jsonData[f"tier_{tier}"][node]["southbound"].append(f"compute - {addr}")
+                else:
+                    for southNode in self.clos.nodes[node]["southbound"]:
+                        addr = self.clos.nodes[node]["ipv4"][southNode]
+                        jsonData[f"tier_{tier}"][node]["southbound"].append(f"{southNode} - {addr}")
+
+        return jsonData
+    
     def isNetworkNode(self, node):
         return False if node == "compute" else self.clos.nodes[node]["tier"] > self.COMPUTE_TIER
 
