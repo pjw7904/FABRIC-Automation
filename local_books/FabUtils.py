@@ -136,33 +136,33 @@ class FabOrchestrator:
         '''
         Download a file
         '''
+        #Create execute threads
+        execute_threads = {}
+        for node in self.selectedNodes(prefixList):
+            nodeName = node.get_name()
+            if(addNodeName is True):
+                finalRemoteLocation = remoteLocation.format(name=nodeName)
+                finalLocalLocation =  localLocation.format(name=nodeName)
+            else:
+                finalRemoteLocation = remoteLocation
+                finalLocalLocation =  localLocation
 
-        try:
-            #Create execute threads
-            execute_threads = {}
-            for node in self.selectedNodes(prefixList):
-                nodeName = node.get_name()
-                if(addNodeName is True):
-                    finalRemoteLocation = remoteLocation.format(name=nodeName)
-                    finalLocalLocation =  localLocation.format(name=nodeName)
-                else:
-                    finalRemoteLocation = remoteLocation
-                    finalLocalLocation =  localLocation
+            print(f"Starting download on node {nodeName}")
+            print(f'File to download: {finalRemoteLocation}')
+            print(f'Location of download: {finalLocalLocation}')
 
-                print(f"Starting download on node {nodeName}")
-                print(f'File to download: {finalRemoteLocation}')
-                print(f'Location of download: {finalLocalLocation}')
+            execute_threads[node] = node.download_file_thread(finalLocalLocation, finalRemoteLocation)
 
-                execute_threads[node] = node.download_file_thread(finalLocalLocation, finalRemoteLocation)
-
-            #Wait for results from threads
-            for node,thread in execute_threads.items():
-                print(f"Waiting for result from node {node.get_name()}")
+        #Wait for results from threads
+        for node,thread in execute_threads.items():
+            print(f"Waiting for result from node {node.get_name()}")
+            
+            try:
                 output = thread.result()
-                print(f"Output: {output}")
-
-        except Exception as e:
-            print(f"Exception: {e}")
+            except Exception as e:
+                print(f"Exception: {e}")
+            
+            print(f"Output: {output}")
 
         return
     
