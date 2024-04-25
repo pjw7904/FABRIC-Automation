@@ -14,8 +14,9 @@ sudo yum install -y frr frr-pythontools
 # Give permissions to user to access frr files (this requires a logout after to take effect)
 sudo usermod -a -G frr,frrvty $(logname)
 
-# Install tshark for packet-level inspections.
-sudo dnf install -y wireshark-cli
+# Install Python and friends for traffic analysis
+sudo dnf install -y python3.11 python3.11-pip wireshark-cli tmux
+sudo python3 -m pip install scapy
 
 # Turn on IP forwarding
 sudo sysctl -w net.ipv4.ip_forward=1
@@ -24,7 +25,7 @@ sudo sysctl -w net.ipv4.ip_forward=1
 newgrp frr << END
 sudo sed -i 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
 sudo sed -i 's/#frr_profile="datacenter"/frr_profile="datacenter"/g' /etc/frr/daemons
-sudo mv frr_scripts/frr.conf /etc/frr/frr.conf
+sudo mv bgp_scripts/frr.conf /etc/frr/frr.conf
 sudo service frr start
 END
 
