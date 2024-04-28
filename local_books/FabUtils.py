@@ -14,6 +14,7 @@ class FabOrchestrator:
     # Constructor, get access to the slice and nodes
     def __init__(self, sliceName):
         '''
+        Gain access to the FABRIC slice and its nodes.
         '''
         
         try:            
@@ -164,6 +165,22 @@ class FabOrchestrator:
             
             print(f"Output: {output}")
 
+        return
+
+    def addIPAddressToInterface(self, node, interface, ipAddress, mask):
+        '''
+        Add an IPv4 address to a node on a specific interface. NetworkManager
+        controls the interface.
+        '''
+
+        command = ("sudo nmcli con add type ethernet " 
+                  f"con-name {interface} ifname {interface} "
+                  f"autoconnect yes ipv4.method manual ipv4.addresses {ipAddress}/{mask} "
+                  f"&& sudo nmcli dev set {interface} managed yes")
+        
+        node.execute(command)
+        print(f"Interface {interface} has been configured with IP address {ipAddress}/{mask}")
+        
         return
     
     def saveSSHCommands(self):
