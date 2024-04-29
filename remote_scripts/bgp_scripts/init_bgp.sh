@@ -16,7 +16,7 @@ sudo usermod -a -G frr,frrvty $(logname)
 
 # Install Python and friends for traffic analysis
 sudo dnf install -y $(cat ~/bgp_scripts/required_packages.txt)
-sudo python3 -m pip install scapy
+sudo python3 -m pip install scapy psutil
 
 # Turn on IP forwarding
 sudo sysctl -w net.ipv4.ip_forward=1

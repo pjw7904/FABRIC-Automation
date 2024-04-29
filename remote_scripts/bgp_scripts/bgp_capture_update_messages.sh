@@ -32,8 +32,14 @@ createPcap() {
 # Set a trap for the SIGHUP signal and call the cleanup function.
 trap cleanup SIGHUP
 
-# Find all available interfaces that start with "eth" but are NOT eth0 (management interface).
-ALL_INTERFACES=$(ip link show | awk -F: '$2 ~ /^ eth/ && $2 !~ /eth0/{gsub(/ /, "", $2); print $2}')
+# If an interface is to be excluded for traffic analysis, mark that interface.
+excludedInterface="none"
+if [ ! -z "$1" ]; then
+    excludedInterface="$1"
+fi
+
+# Find all available interfaces that start with "eth" but are NOT eth0 (management interface) or the inputted excluded interface.
+ALL_INTERFACES=$(ip link show | awk -F: -v excl="$excludedInterface" '$2 ~ /^ eth/ && $2 !~ /eth0/ && ($2 !~ excl || excl == "none") {gsub(/ /, "", $2); print $2}')
 
 # Build the included interface list.
 INCLUDED_INTFS=""
