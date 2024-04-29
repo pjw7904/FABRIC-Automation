@@ -29,23 +29,26 @@ class FabOrchestrator:
         except Exception as e:
             print(f"Exception: {e}")
 
-    def selectedNodes(self, prefixList=None):
+    def selectedNodes(self, prefixList=None, excludedList=None):
         '''
         Perform an action (execute a command, up/download a file, etc.) on a subset of nodes
         '''
         
         if(prefixList):
             prefixList = tuple(map(str.strip, prefixList.split(",")))
+
+        if(excludedList):
+            excludedList = tuple(map(str.strip, excludedList.split(",")))
         
         for node in self.nodes:
             nodeName = node.get_name()
-            
-            if(prefixList and not nodeName.startswith(prefixList)):
+
+            if((excludedList and nodeName.startswith(excludedList)) or (prefixList and not nodeName.startswith(prefixList))):
                 continue
             
             yield node
             
-    def executeCommandsParallel(self, command, prefixList=None, addNodeName=False):
+    def executeCommandsParallel(self, command, prefixList=None, excludedList=None, addNodeName=False):
         '''
         Execute a command, in parallel using threads, on all or a subset of remote FABRIC nodes
         '''
@@ -53,7 +56,7 @@ class FabOrchestrator:
         try:
             #Create execute threads
             execute_threads = {}
-            for node in self.selectedNodes(prefixList):
+            for node in self.selectedNodes(prefixList, excludedList):
                 nodeName = node.get_name()
                 if(addNodeName is True):
                     finalCommand = command.format(name=nodeName)
@@ -78,7 +81,7 @@ class FabOrchestrator:
 
         return
 
-    def uploadDirectoryParallel(self, directory, remoteLocation=None, prefixList=None):
+    def uploadDirectoryParallel(self, directory, remoteLocation=None, prefixList=None, excludedList=None):
         '''
         '''
         
@@ -90,7 +93,7 @@ class FabOrchestrator:
         try:
             #Create execute threads
             execute_threads = {}
-            for node in self.selectedNodes(prefixList):
+            for node in self.selectedNodes(prefixList, excludedList):
                 print(f"Starting upload on node {node.get_name()}")
                 execute_threads[node] = node.upload_directory_thread(directory, remoteLocation)
 
@@ -105,7 +108,7 @@ class FabOrchestrator:
 
         return    
     
-    def uploadFileParallel(self, file, remoteLocation=None, prefixList=None):
+    def uploadFileParallel(self, file, remoteLocation=None, prefixList=None, excludedList=None):
         '''
         '''
         
@@ -118,7 +121,7 @@ class FabOrchestrator:
         try:
             #Create execute threads
             execute_threads = {}
-            for node in self.selectedNodes(prefixList):
+            for node in self.selectedNodes(prefixList, excludedList):
                 print(f"Starting upload on node {node.get_name()}")
                 execute_threads[node] = node.upload_file_thread(file, remoteLocation)
 
@@ -133,13 +136,13 @@ class FabOrchestrator:
 
         return
 
-    def downloadFilesParallel(self, localLocation, remoteLocation, prefixList=None, addNodeName=False):
+    def downloadFilesParallel(self, localLocation, remoteLocation, prefixList=None, excludedList=None, addNodeName=False):
         '''
         Download a file
         '''
         #Create execute threads
         execute_threads = {}
-        for node in self.selectedNodes(prefixList):
+        for node in self.selectedNodes(prefixList, excludedList):
             nodeName = node.get_name()
             if(addNodeName is True):
                 finalRemoteLocation = remoteLocation.format(name=nodeName)
