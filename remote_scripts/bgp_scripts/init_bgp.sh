@@ -24,6 +24,7 @@ sudo sysctl -w net.ipv4.ip_forward=1
 # A "here" document to get around the logout/login requirements of adding a group to a user
 newgrp frr << END
 sudo sed -i 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
+sudo sed -i 's/bfdd=no/bfdd=yes/g' /etc/frr/daemons
 sudo sed -i 's/#frr_profile="datacenter"/frr_profile="datacenter"/g' /etc/frr/daemons
 sudo mv bgp_scripts/frr.conf /etc/frr/frr.conf
 sudo service frr start
