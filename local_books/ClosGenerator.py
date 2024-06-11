@@ -755,14 +755,14 @@ class MTPConfig(ClosGenerator):
                                southbound=[], 
                                tier=northTier, 
                                ipv4=defaultdict(lambda: "MTP"), 
-                               isTopTier="true" if self.numTiers == northTier else "false")
+                               isTopTier=True if self.numTiers == northTier else False)
         if(southNode not in self.clos):
             self.clos.add_node(southNode, 
                                northbound=[], 
                                southbound=[], 
                                tier=southTier, 
                                ipv4=defaultdict(lambda: "MTP"), 
-                               isTopTier="false")
+                               isTopTier=False)
         
         # Mark each other as neighbors in their appropriate direction.
         self.clos.nodes[northNode]["southbound"].append(southNode)
