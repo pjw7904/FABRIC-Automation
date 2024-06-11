@@ -1,6 +1,13 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,jupyternotebooks
 
+### Automation Testing ###
+logs/*
+measurement/*
+local_books/slice_logs/*
+local_books/fab_test.py
+local_books/local_test.py
+
 ### MTP and MTP Automation ###
 */Clos_ssh_cmds.txt
 */node_config.json
