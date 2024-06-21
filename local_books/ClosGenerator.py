@@ -86,8 +86,10 @@ class ClosGenerator:
             title = self.SPINE_NAME
         elif(currentTier == self.LEAF_TIER):
             title = self.LEAF_NAME
-        else:
+        elif(currentTier == self.COMPUTE_TIER):
             title = self.COMPUTE_NAME
+        else:
+            title = ""
 
         return title
        
@@ -381,15 +383,22 @@ class ClosGenerator:
         return
 
 class BGPDCNConfig(ClosGenerator):
+    # BGP constants.
     PROTOCOL = "BGP"
     PRIVATE_ASN_RANGE_START = 64512
 
+    # IPv4 network constants.
     LEAF_SPINE_SUPERNET = '172.16.0.0/12'
     COMPUTE_SUPERNET = '192.168.0.0/16'
     LEAF_SPINE_SUBNET_BITS = 12
     COMPUTE_SUBNET_BITS = 8
 
-    def __init__(self, k, t, southboundPortsConfig=None, singleComputeSubnet=False):
+    # Security node Constants.
+    FIRST_TOF_NODE_NAME = "T-1"
+    SEC_NAME = "H" # H for hacker.
+    SEC_TIER = -1
+
+    def __init__(self, k, t, southboundPortsConfig=None, singleComputeSubnet=False, addSecurityNode=False):
         """
         Initializes a graph and its data structures to hold network information.
 
@@ -413,6 +422,9 @@ class BGPDCNConfig(ClosGenerator):
         # If only one compute subnet should be hanging off a leaf, then each leaf needs to be given a specific subnet
         self.singleComputeSubnet = singleComputeSubnet
         self.leafComputeSubnets = {}
+
+        # A security node can be added to a top-tier node if desired.
+        self.addSecNode = True if addSecurityNode else False
         
     def generateNode(self, prefix, nodeNum, currentTier, topTier):
         """
@@ -438,8 +450,8 @@ class BGPDCNConfig(ClosGenerator):
 
         ASNPrefix = None
 
-        # Compute nodes don't get an ASN
-        if(title != self.COMPUTE_NAME):
+        # Compute and security nodes don't get an ASN
+        if(title != self.COMPUTE_NAME and title != self.SEC_NAME):
             # Every leaf gets its own ASN
             if(title == self.LEAF_NAME):
                 ASNPrefix = name
@@ -490,6 +502,26 @@ class BGPDCNConfig(ClosGenerator):
         
         # Add the edge to the topology, while also noting the type of network.
         self.clos.add_edge(northNode, southNode, computeNetwork=isComputeNetwork)
+
+        # If a security node is requested, add it to the first (T-1) top-tier spine.
+        if(self.addSecNode and northNode == self.FIRST_TOF_NODE_NAME):
+            self.connectSecurityNode(northNode, northTier)
+            
+        return
+
+    def connectSecurityNode(self, networkingNode, topTier):
+        """
+        Connect a networking node and a security/hacker node together via an edge.
+
+        :param networkingNode: The networking/BGP node attached to the hacker node.
+        """
+        SEC_NODE_NUM = "1"
+
+        self.addSecNode = False # Only add this node.
+        
+
+        securityNode = self.generateNode(self.SEC_NAME, SEC_NODE_NUM, self.SEC_TIER, topTier,)
+        self.connectNodes(securityNode, networkingNode, self.SEC_TIER, topTier)
 
         return
 
@@ -583,7 +615,7 @@ class BGPDCNConfig(ClosGenerator):
             logFile.write("Number of leaves: {}\n".format(numLeaves))
             logFile.write("Number of Pods: {}\n".format(numPods))
 
-            for tier in reversed(range(topTier+1)):
+            for tier in reversed(range(self.SEC_TIER, topTier+1)):
                 nodes = [v for v in self.clos if self.clos.nodes[v]["tier"] == tier]
                 logFile.write("\n== TIER {} ==\n".format(tier))
 
