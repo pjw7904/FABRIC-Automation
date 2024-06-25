@@ -48,10 +48,13 @@ class FabOrchestrator:
             
             yield node
             
-    def executeCommandsParallel(self, command, prefixList=None, excludedList=None, addNodeName=False):
+    def executeCommandsParallel(self, command, prefixList=None, excludedList=None, addNodeName=False, returnOutput=False):
         '''
         Execute a command, in parallel using threads, on all or a subset of remote FABRIC nodes
         '''
+
+        # Dict to store stdout, if desired.
+        cmdOutput = {}
 
         try:
             #Create execute threads
@@ -70,14 +73,21 @@ class FabOrchestrator:
 
             #Wait for results from threads
             for node,thread in execute_threads.items():
-                print(f"\n==== {node.get_name()} RESULTS ====")
-                
+                nodeName = node.get_name()
+                print(f"\n==== {nodeName} RESULTS ====")
+
                 stdout,stderr = thread.result()
                 print(f"stdout:\n{stdout}")
                 print(f"stderr:\n{stderr}")
 
+                if(returnOutput):
+                    cmdOutput[nodeName] = stdout
+
         except Exception as e:
             print(f"Exception: {e}")
+
+        if(returnOutput):
+            return cmdOutput
 
         return
 
