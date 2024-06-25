@@ -485,7 +485,7 @@ class BGPDCNConfig(ClosGenerator):
         isComputeNetwork = False
 
         # If one of the nodes is a compute node, this is an edge network (compute-leaf).
-        if(southTier == self.COMPUTE_TIER):
+        if(southTier <= self.COMPUTE_TIER):
             self.addressEdgeNodes(northNode, southNode)
             isComputeNetwork = True
 
@@ -521,7 +521,7 @@ class BGPDCNConfig(ClosGenerator):
         
 
         securityNode = self.generateNode(self.SEC_NAME, SEC_NODE_NUM, self.SEC_TIER, topTier,)
-        self.connectNodes(securityNode, networkingNode, self.SEC_TIER, topTier)
+        self.connectNodes(networkingNode, securityNode, topTier, self.SEC_TIER)
 
         return
 
@@ -656,7 +656,7 @@ class BGPDCNConfig(ClosGenerator):
                     "numLeaves": 2*((self.sharedDegree//2)**(self.numTiers-1)),
                     "numPods": 2*((self.sharedDegree//2)**(self.numTiers-2))}
 
-        for tier in reversed(range(self.numTiers+1)):
+        for tier in reversed(range(self.SEC_TIER, self.numTiers+1)):
             nodes = [v for v in self.clos if self.clos.nodes[v]["tier"] == tier]
             jsonData[f"tier_{tier}"] = {}
 
@@ -687,6 +687,9 @@ class BGPDCNConfig(ClosGenerator):
     
     def isNetworkNode(self, node):
         return False if node == "compute" else self.clos.nodes[node]["tier"] > self.COMPUTE_TIER
+
+    def isSecurityNode(self, node):
+        return True if node.startswith(SEC_NAME) else False
 
     def iterNetwork(self, fabricFormating=False):
         """
