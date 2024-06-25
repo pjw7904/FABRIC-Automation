@@ -89,6 +89,10 @@ outputConfigCommand = 'ls -alt ~/mtp_scripts'
 manager.executeCommandsParallel(outputConfigCommand, prefixList=NETWORK_NODE_PREFIXES)
 
 # %%
+outputConfigCommand = 'ls -alt ~/CMTP/SRC'
+manager.executeCommandsParallel(outputConfigCommand, prefixList=NETWORK_NODE_PREFIXES)
+
+# %%
 outputConfigCommand = 'cat ~/CMTP/SRC/mtp.conf'
 manager.executeCommandsParallel(outputConfigCommand, prefixList=NETWORK_NODE_PREFIXES)
 
@@ -101,13 +105,25 @@ outputConfigCommand = 'ps aux | grep mtp'
 manager.executeCommandsParallel(outputConfigCommand, prefixList=NETWORK_NODE_PREFIXES)
 
 # %%
-outputConfigCommand = 'git -C ~/CMTP log -1'
+outputConfigCommand = 'cd ~/CMTP && git log -1'
+manager.executeCommandsParallel(outputConfigCommand, prefixList=NETWORK_NODE_PREFIXES)
+
+# %%
+outputConfigCommand = 'tail -3 mtp.log'
+manager.executeCommandsParallel(outputConfigCommand, prefixList=NETWORK_NODE_PREFIXES)
+
+# %%
+outputConfigCommand = 'date +"+%s%3N"'
 manager.executeCommandsParallel(outputConfigCommand, prefixList=NETWORK_NODE_PREFIXES)
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Modify Configuration - MTP Testing</b></span>
 #
 # <b>WARNING</b>: This will potentially modify how MTP or the MTP testing suite operates. Only run these if you need to make that specific change, you shouldn't run anything in this section just to try it out. If something breaks, you'll need to find a way back by adding additional commands here or by manual reconfiguration.
+
+# %%
+outputConfigCommand = 'cd ~/CMTP && git pull'
+manager.executeCommandsParallel(outputConfigCommand, prefixList=NETWORK_NODE_PREFIXES)
 
 # %%
 outputConfigCommand = 'cd ~/CMTP/SRC && gcc *.c -o MTPstart'
@@ -122,7 +138,7 @@ manager.uploadDirectoryParallel("/home/fabric/work/custom/FABRIC-Automation/remo
 manager.executeCommandsParallel('chmod +x /home/rocky/mtp_scripts/*.sh', prefixList=NETWORK_NODE_PREFIXES)
 
 # %%
-manager.uploadFileParallel("/home/fabric/work/custom/FABRIC-Automation/remote_scripts/mtp_scripts/mtp_data_collection.sh", remoteLocation="/home/rocky/mtp_scripts/mtp_data_collection.sh", prefixList=NETWORK_NODE_PREFIXES)
+manager.uploadFileParallel("/home/fabric/work/custom/FABRIC-Automation/remote_scripts/mtp_scripts/intf_down.sh", remoteLocation="/home/rocky/mtp_scripts/intf_down.sh", prefixList=NETWORK_NODE_PREFIXES)
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>View Logging</b></span>
