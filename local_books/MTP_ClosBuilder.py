@@ -49,6 +49,7 @@
 SLICE_NAME = "mtp_test"
 SITE_NAME = "WASH"
 MEAS_ADD = False
+SEC_ADD = True
 
 # Folded-Clos Configuration
 PORTS_PER_DEVICE = 4
@@ -185,6 +186,39 @@ for networkInfo in topology.iterNetwork(fabricFormating=True):
     print(f"\tAdded network {network}")
 
 # %% [markdown]
+# ## <span style="color: #034694"><b>Add a Hacker Node (Optional)</b></span> 
+
+# %%
+ATTACHED_NODE = "T-1" # The first top-tier node is the default node to attach the hacker to the topology.
+HACKER_NODE = "H-1"
+HACKER_NETWORK = (HACKER_NODE, ATTACHED_NODE)
+HACKER_NETWORK_TYPE = "edge" # Not a core network, an edge network (or is it? Whatever you want it to be)
+HACKER_NODE_TIER = -1
+
+if(SEC_ADD):
+    # Add the hacker node.
+    hackerInfo = slice.add_node(name=HACKER_NODE, cores=4, ram=4, disk=80, image='default_debian_11', site=SITE_NAME)
+    addComputeConfiguration(hackerInfo)
+    
+    # Create interfaces for the new top-tier node + hacker network.
+    attachedNodeIntfName = f"intf-{HACKER_NODE}"
+    attachedNodeIntf = addedNodes[ATTACHED_NODE].add_component(model='NIC_Basic', name=attachedNodeIntfName).get_interfaces()[0]
+    
+    hackerNodeIntfName = f"intf-{ATTACHED_NODE}"
+    hackerNodeIntf = hackerInfo.add_component(model='NIC_Basic', name=hackerNodeIntfName).get_interfaces()[0]
+    
+    # Add the network to the FABRIC slice.
+    networkName = f"edge-{HACKER_NODE}-{ATTACHED_NODE}"
+    slice.add_l2network(name=networkName, interfaces=[hackerNodeIntf, attachedNodeIntf], type="L2Bridge")
+    print("Added hacker node and network}")
+
+    # Add it to the log file
+    logFile.update({f"tier_{HACKER_NODE_TIER}": {HACKER_NODE: {"northbound" : [], "southbound" : [ATTACHED_NODE]}}})
+
+else:
+    print("No hacker node added.")
+
+# %% [markdown]
 # ## <span style="color: #034694"><b>Add a Measurement Node (Optional)</b></span> 
 
 # %%
@@ -257,6 +291,10 @@ edgeNodeConfig = "./mtp_scripts/init_compute.sh"
 manager.executeCommandsParallel(coreNodeConfig, prefixList=NETWORK_NODE_PREFIXES)
 
 # Configure edge (non-MTP-speaking) nodes
+if(SEC_ADD):
+    securityPrefix = "H"
+    COMPUTE_NODE_PREFIXES += f",{securityPrefix}"
+
 manager.executeCommandsParallel(edgeNodeConfig, prefixList=COMPUTE_NODE_PREFIXES)
 
 # %% [markdown]
@@ -310,6 +348,10 @@ for node in topology.iterNodes():
 for nodeName in topology.iterNodes():
     tierNumber = topology.getNodeAttribute(nodeName, 'tier')
     logFile[f"tier_{tierNumber}"][nodeName]["ssh"] = manager.slice.get_node(nodeName).get_ssh_command()
+
+# Add the hacker node as well if it is present
+if(SEC_ADD):
+    logFile[f"tier_{HACKER_NODE_TIER}"][HACKER_NODE]["ssh"] = manager.slice.get_node(HACKER_NODE).get_ssh_command()
 
 
 # %%
