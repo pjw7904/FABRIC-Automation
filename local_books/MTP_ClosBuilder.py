@@ -210,7 +210,7 @@ if(SEC_ADD):
     # Add the network to the FABRIC slice.
     networkName = f"edge-{HACKER_NODE}-{ATTACHED_NODE}"
     slice.add_l2network(name=networkName, interfaces=[hackerNodeIntf, attachedNodeIntf], type="L2Bridge")
-    print("Added hacker node and network}")
+    print("Added hacker node and network")
 
     # Add it to the log file
     logFile.update({f"tier_{HACKER_NODE_TIER}": {HACKER_NODE: {"northbound" : [], "southbound" : [ATTACHED_NODE]}}})
@@ -291,10 +291,6 @@ edgeNodeConfig = "./mtp_scripts/init_compute.sh"
 manager.executeCommandsParallel(coreNodeConfig, prefixList=NETWORK_NODE_PREFIXES)
 
 # Configure edge (non-MTP-speaking) nodes
-if(SEC_ADD):
-    securityPrefix = "H"
-    COMPUTE_NODE_PREFIXES += f",{securityPrefix}"
-
 manager.executeCommandsParallel(edgeNodeConfig, prefixList=COMPUTE_NODE_PREFIXES)
 
 # %% [markdown]
