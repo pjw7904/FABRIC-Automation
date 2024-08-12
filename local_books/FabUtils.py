@@ -15,6 +15,8 @@ class FabOrchestrator:
     def __init__(self, sliceName):
         '''
         Gain access to the FABRIC slice and its nodes.
+
+        :param sliceName: The name of the slice you are working on.
         '''
         
         try:            
@@ -29,9 +31,14 @@ class FabOrchestrator:
         except Exception as e:
             print(f"Exception: {e}")
 
+    
     def selectedNodes(self, prefixList=None, excludedList=None):
         '''
-        Perform an action (execute a command, up/download a file, etc.) on a subset of nodes
+        Perform an action (execute a command, up/download a file, etc.) on a subset of nodes.
+        This is an iterator meant to be used by other functions or in a loop.
+
+        :param prefixList: A naming prefix (ex: C for client) that groups nodes together to run the same configuration.
+        :param excludedList: A naming prefix that groups nodes together to NOT run the desired configuration.
         '''
         
         if(prefixList):
@@ -47,10 +54,17 @@ class FabOrchestrator:
                 continue
             
             yield node
-            
+
+    
     def executeCommandsParallel(self, command, prefixList=None, excludedList=None, addNodeName=False, returnOutput=False):
         '''
-        Execute a command, in parallel using threads, on all or a subset of remote FABRIC nodes
+        Execute a command, in parallel using threads, on all or a subset of remote FABRIC nodes.
+
+        :param prefixList: A naming prefix (ex: C for client) that groups nodes together to run the same configuration.
+        :param excludedList: A naming prefix that groups nodes together to NOT run the desired configuration.
+        :param addNodeName: Add the name of the node to the command. The command MUST include the string format {name} for this to work.
+        :param returnOutput: If the stdout/console output should be captured, set to True.
+        :returns: The stdout of the command run on each node if set in returnOutput, otherwise None.
         '''
 
         # Dict to store stdout, if desired.
@@ -91,8 +105,15 @@ class FabOrchestrator:
 
         return
 
+    
     def uploadDirectoryParallel(self, directory, remoteLocation=None, prefixList=None, excludedList=None):
         '''
+        Upload a directory, in parallel using threads, onto all or a subset of remote FABRIC nodes.
+
+        :param directory: The path to the directory you wish to upload.
+        :param remoteLocation: The full path of the remote directory you wish to place the uploaded directory.
+        :param prefixList: A naming prefix (ex: C for client) that groups nodes together to run the same configuration.
+        :param excludedList: A naming prefix that groups nodes together to NOT run the desired configuration.
         '''
         
         if(remoteLocation is None):
@@ -117,9 +138,16 @@ class FabOrchestrator:
             print(f"Exception: {e}")
 
         return    
+
     
     def uploadFileParallel(self, file, remoteLocation=None, prefixList=None, excludedList=None):
         '''
+        Upload a file, in parallel using threads, onto all or a subset of remote FABRIC nodes.
+
+        :param file: The path to the file you wish to upload.
+        :param remoteLocation: The full path of the remote directory you wish to place the uploaded directory.
+        :param prefixList: A naming prefix (ex: C for client) that groups nodes together to run the same configuration.
+        :param excludedList: A naming prefix that groups nodes together to NOT run the desired configuration.
         '''
         
         if(remoteLocation is None):
@@ -146,10 +174,18 @@ class FabOrchestrator:
 
         return
 
+    
     def downloadFilesParallel(self, localLocation, remoteLocation, prefixList=None, excludedList=None, addNodeName=False):
         '''
-        Download a file
+        Download a file, in parallel using threads, from all or a subset of remote FABRIC nodes.
+
+        :param localLocation: The path to where the downloaded file should be stored, including the filename.
+        :param remoteLocation: The full path of the file to be downloaded.
+        :param prefixList: A naming prefix (ex: C for client) that groups nodes together to run the same configuration.
+        :param excludedList: A naming prefix that groups nodes together to NOT run the desired configuration.
+        :param addNodeName: Add the name of the node to the file path (local and/or remote). The path MUST include the string format {name} for this to work.
         '''
+        
         #Create execute threads
         execute_threads = {}
         for node in self.selectedNodes(prefixList, excludedList):
@@ -180,10 +216,17 @@ class FabOrchestrator:
 
         return
 
+    
     def addIPAddressToInterface(self, node, interface, ipAddress, mask):
         '''
-        Add an IPv4 address to a node on a specific interface. NetworkManager
-        controls the interface.
+        Add a NetworkManager-controlled IPv4 address to a node on a specific interface.
+        This should only be used if NetworkManager is required, there are easier ways
+        of adding addressing in FABRIC that does not involve NetworkManager.
+
+        :param node: The FABRIC Node object to modify.
+        :param interface: The name of the interface to add the IPv4 address.
+        :param ipAddress: The dotted-decimal IPv4 address without any mask information.
+        :param mask: The subnet mask of the IPv4 address using the CIDR prefix (no slash).
         '''
 
         command = ("sudo nmcli con add type ethernet " 
@@ -195,10 +238,11 @@ class FabOrchestrator:
         print(f"Interface {interface} has been configured with IP address {ipAddress}/{mask}")
         
         return
+
     
     def saveSSHCommands(self):
         '''
-        Grab the SSH command for each node in the topology and save it to a file in the local directory
+        Grab the SSH command for each node in the topology and save it to a file in the local directory.
         '''
         
         with open(f"{self.slice.get_name()}_ssh_cmds.txt", "w") as sshFile:
@@ -207,20 +251,24 @@ class FabOrchestrator:
                 sshFile.write(f"{node.get_ssh_command()}\n")
 
         return
+
     
     def renewSlice(self, daysToAdd):
         '''
-        Renew the slice for a set number of days
+        Renew the slice for a set number of days.
+
+        :param daysToAdd: The number of days to add to the slice lifetime.
         '''
         
         endDate = (datetime.datetime.now() + datetime.timedelta(days=daysToAdd)).strftime("%Y-%m-%d %H:%M:%S %z") + "+0000"
         self.slice.renew(endDate)
         
         return
+
     
     def getInterfaceSubnet(self, intfName):
         '''
-        Return the subnet of an interface in IPv4Network format
+        Return the subnet of a FABRIC node's interface
         '''
         
         intf = self.slice.get_interface(intfName)
