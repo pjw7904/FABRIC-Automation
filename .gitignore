@@ -1,6 +1,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,jupyternotebooks
 
+### Ignore all books, only percent files should be tracked ###
+local_books/*.ipynb
+
 ### Automation Testing ###
 logs/*
 measurement/*
@@ -196,4 +199,5 @@ poetry.toml
 pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
-*.ipynb
+
+
