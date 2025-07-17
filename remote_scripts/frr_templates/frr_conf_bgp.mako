@@ -4,8 +4,10 @@ log timestamp precision 3
 debug bgp updates in
 debug bgp updates out
 debug bgp updates detail
+debug zebra events
 !
 bfd
+ log-session-changes 
  profile lowerIntervals
   transmit-interval 100
  !
@@ -19,6 +21,7 @@ exit
 !
 router bgp ${bgp_asn}
  timers bgp 1 3
+ bgp log-neighbor-changes
 % for neighbor in neighbors:
  neighbor ${neighbor["ip"]} remote-as ${neighbor["asn"]}
  neighbor ${neighbor["ip"]} bfd
