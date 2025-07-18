@@ -28,7 +28,7 @@
 # | COMPUTE_NODE_PREFIXES | The naming prefix(es) for compute/non-BGP-speaking nodes |
 
 # %%
-SLICE_NAME = "bgp_bfd"
+SLICE_NAME = "clos_bgp"
 NETWORK_NODE_PREFIXES = "T,S,L"
 COMPUTE_NODE_PREFIXES = "C"
 
@@ -150,3 +150,13 @@ print("LOG ENTRIES\n")
 routingTableEntry = "PAPP6-VDAWM"
 routingTableCommand = f"sudo cat /var/log/frr/bgpd.log | grep {routingTableEntry}"
 manager.executeCommandsParallel(routingTableCommand, prefixList=NETWORK_NODE_PREFIXES)
+
+# %% [markdown]
+# ## <span style="color: #de4815"><b>Renew Slice</b></span>
+#
+# Need to keep the slice going? renew it for X number of days. There is a limit of 2 weeks per renewal.
+
+# %%
+days_to_renew = 7 # Replace this with a value of 1-14 days
+
+manager.renewSlice(days_to_renew)
