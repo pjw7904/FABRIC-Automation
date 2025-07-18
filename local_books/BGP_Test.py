@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.2
+#       jupytext_version: 1.16.7
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -63,13 +63,21 @@ NETWORK_NODE_PREFIXES = "T,S,L"
 COMPUTE_NODE_PREFIXES = "C"
 
 # Failure point
-NODE_TO_FAIL_INTF = "L-1"
-NEIGHBOR_LOST = None
-INTF_NAME_KNOWN = True
-INTF_NAME = "eth3"
+IS_SOFT_FAILURE = True
+NODE_FAILED = {
+    "name": "L-1",
+    "interface": "eth1"
+}
+NEIGHBOR_FAILED =  {
+    "name": None,
+    "interface": None
+}
+INTF_NAMES_KNOWN = True if NODE_FAILED["interface"] and (NEIGHBOR_FAILED["interface"] or IS_SOFT_FAILURE) else False
 
 # Local directory location (where to download remote logs)
 LOG_DIR_PATH = "../logs/1209_logs"
+
+print(INTF_NAMES_KNOWN)
 
 # %%
 import os
@@ -80,7 +88,6 @@ lOG_FRR_NAME = "/var/log/frr/bgpd.log"
 LOG_CAP_NAME = "/home/rocky/bgp_scripts/bgp_update_only.pcap"
 LOG_OVERHEAD_NAME = "/home/rocky/bgp_scripts/overhead.log"
 LOG_INTF_DOWN_NAME = "/home/rocky/bgp_scripts/intf_down.log"
-# TRAFFIC_RESULTS
 
 # If the logs directory does not already exist, create it
 subdirs = ["captures", "overhead", "convergence", "traffic"]
@@ -101,19 +108,19 @@ except Exception as e:
 # ## <span style="color: #de4815"><b>Run Experiment</b></span>
 
 # %%
-if(INTF_NAME_KNOWN):
-    intfName = INTF_NAME
+if(INTF_NAMES_KNOWN):
+    intfName = FAILED_NODE_INTF_NAME
 else:
-    fabricIntf = manager.slice.get_interface(f"{NODE_TO_FAIL_INTF}-intf-{NEIGHBOR_LOST}-p1")
+    fabricIntf = manager.slice.get_interface(f"{NODE_FAILED["name"]}-intf-{NEIGHBOR_FAILED["name"]}-p1")
     intfName = fabricIntf.get_device_name()
 
 # %%
 # Start data collection for all nodes minus the one that is being failed.
 startLoggingCmd = "bash ~/bgp_scripts/bgp_data_collection.sh"
-manager.executeCommandsParallel(startLoggingCmd, prefixList=NETWORK_NODE_PREFIXES, excludedList=NODE_TO_FAIL_INTF)
+manager.executeCommandsParallel(startLoggingCmd, prefixList=NETWORK_NODE_PREFIXES, excludedList=NODE_FAILED)
 
 startLoggingCmd = f"bash ~/bgp_scripts/bgp_data_collection.sh {intfName}"
-manager.executeCommandsParallel(startLoggingCmd, prefixList=NODE_TO_FAIL_INTF)
+manager.executeCommandsParallel(startLoggingCmd, prefixList=NODE_FAILED)
 
 print("BGP data collection started.")
 
@@ -124,8 +131,8 @@ time.sleep(10)
 # %%
 failIntfCmd = f"bash /home/rocky/bgp_scripts/intf_down.sh {intfName}"
 
-# Run this command only on node NODE_TO_FAIL_INTF 
-manager.executeCommandsParallel(failIntfCmd, prefixList=NODE_TO_FAIL_INTF)
+# Run this command only on node NODE_FAILED 
+manager.executeCommandsParallel(failIntfCmd, prefixList=NODE_FAILED)
 
 # %%
 print("Giving the nodes time to get reconverged...")
@@ -158,7 +165,7 @@ manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "convergence", "{name}_
 
 # Download the interface downtime log.
 manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "convergence", "intf_down.log"), 
-                              LOG_INTF_DOWN_NAME, prefixList=NODE_TO_FAIL_INTF)
+                              LOG_INTF_DOWN_NAME, prefixList=NODE_FAILED)
 
 # %% [markdown]
 # ## <span style="color: #de4815"><b>Cleanup</b></span>
@@ -167,5 +174,5 @@ manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "convergence", "intf_do
 # Bring the interface back up.
 restoreIntfCmd = f"sudo ip link set dev {intfName} up"
 
-# Run this command only on node NODE_TO_FAIL_INTF 
-manager.executeCommandsParallel(restoreIntfCmd, prefixList=NODE_TO_FAIL_INTF)
+# Run this command only on node NODE_FAILED 
+manager.executeCommandsParallel(restoreIntfCmd, prefixList=NODE_FAILED)
