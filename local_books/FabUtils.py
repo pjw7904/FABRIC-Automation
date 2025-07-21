@@ -7,6 +7,7 @@ THE SLICE MUST ALREADY BE CREATED FOR THIS TO WORK
 
 from fabrictestbed_extensions.fablib.fablib import FablibManager as fablib_manager
 from ipaddress import ip_address, IPv4Address, IPv4Network
+from pathlib import Path
 import datetime
 import ntpath
 
@@ -56,7 +57,8 @@ class FabOrchestrator:
             yield node
 
     
-    def executeCommandsParallel(self, command, prefixList=None, excludedList=None, addNodeName=False, returnOutput=False):
+    def executeCommandsParallel(self, command, prefixList=None, excludedList=None,
+                                fmt=None, returnOutput=False, test=False):
         '''
         Execute a command, in parallel using threads, on all or a subset of remote FABRIC nodes.
 
@@ -67,33 +69,41 @@ class FabOrchestrator:
         :returns: The stdout of the command run on each node if set in returnOutput, otherwise None.
         '''
 
-        # Dict to store stdout, if desired.
         cmdOutput = {}
-
         try:
-            #Create execute threads
+            # --- launch one thread per node ------------------------------------
             execute_threads = {}
             for node in self.selectedNodes(prefixList, excludedList):
                 nodeName = node.get_name()
-                if(addNodeName is True):
-                    finalCommand = command.format(name=nodeName)
-                else:
-                    finalCommand = command
-                
-                print(f"Starting command on node {nodeName}")
-                print(f'Command to execute: {finalCommand}')
-                
-                execute_threads[node] = node.execute_thread(finalCommand)
 
-            #Wait for results from threads
-            for node,thread in execute_threads.items():
+                # base substitutions
+                subs = {"name": nodeName}
+
+                if(fmt):
+                    if callable(fmt):               # dynamic per-node mapping
+                        subs.update(fmt(nodeName))
+                    elif isinstance(fmt, dict):     # static per-node mapping
+                        subs.update(fmt.get(nodeName, {}))
+                    # fmt == True -> legacy: no additional keys
+
+                finalCommand = command.format(**subs)
+                print(f"Starting command on node {nodeName}")
+                print(f"Command to execute: {finalCommand}")
+
+                if(not test):
+                    execute_threads[node] = node.execute_thread(finalCommand)
+
+            if(test):
+                return
+
+            # --- collect results -----------------------------------------------
+            for node, thread in execute_threads.items():
                 nodeName = node.get_name()
                 print(f"\n==== {nodeName} RESULTS ====")
-
-                stdout,stderr = thread.result()
+                stdout, stderr = thread.result()
                 print(f"stdout:\n{stdout}")
                 print(f"stderr:\n{stderr}")
-
+                
                 if(returnOutput):
                     cmdOutput[nodeName] = stdout
 
@@ -103,7 +113,6 @@ class FabOrchestrator:
         if(returnOutput):
             return cmdOutput
 
-        return
 
     
     def uploadDirectoryParallel(self, directory, remoteLocation=None, prefixList=None, excludedList=None):
@@ -175,46 +184,63 @@ class FabOrchestrator:
         return
 
     
-    def downloadFilesParallel(self, localLocation, remoteLocation, prefixList=None, excludedList=None, addNodeName=False):
-        '''
-        Download a file, in parallel using threads, from all or a subset of remote FABRIC nodes.
+    def downloadFilesParallel(
+            self,
+            localLocation,
+            remoteLocation,
+            prefixList=None,
+            excludedList=None,
+            fmt=None,
+        ):
+        """
+        Download a file in parallel from multiple FABRIC nodes.
 
-        :param localLocation: The path to where the downloaded file should be stored, including the filename.
-        :param remoteLocation: The full path of the file to be downloaded.
-        :param prefixList: A naming prefix (ex: C for client) that groups nodes together to run the same configuration.
-        :param excludedList: A naming prefix that groups nodes together to NOT run the desired configuration.
-        :param addNodeName: Add the name of the node to the file path (local and/or remote). The path MUST include the string format {name} for this to work.
-        '''
-        
-        #Create execute threads
+        localLocation / remoteLocation may be str or pathlib.Path and
+        may contain placeholders like {name}.
+        """
+
+        # Convert Path objects to strings once, up front
+        localTemplate  = str(localLocation)
+        remoteTemplate = str(remoteLocation)
+
         execute_threads = {}
+
         for node in self.selectedNodes(prefixList, excludedList):
             nodeName = node.get_name()
-            if(addNodeName is True):
-                finalRemoteLocation = remoteLocation.format(name=nodeName)
-                finalLocalLocation =  localLocation.format(name=nodeName)
-            else:
-                finalRemoteLocation = remoteLocation
-                finalLocalLocation =  localLocation
+
+            # Substitution variables for this node
+            fmt_vars = {"name": nodeName}
+            if fmt and nodeName in fmt:
+                fmt_vars.update(fmt[nodeName])
+
+            try:
+                finalRemoteLocation = remoteTemplate.format(**fmt_vars)
+                finalLocalLocation  = localTemplate.format(**fmt_vars)
+            except KeyError as e:
+                raise ValueError(
+                    f"Missing format key {e} for node {nodeName}"
+                ) from None
 
             print(f"Starting download on node {nodeName}")
-            print(f'File to download: {finalRemoteLocation}')
-            print(f'Location of download: {finalLocalLocation}')
+            print(f"File to download:     {finalRemoteLocation}")
+            print(f"Location of download: {finalLocalLocation}")
 
-            execute_threads[node] = node.download_file_thread(finalLocalLocation, finalRemoteLocation)
+            execute_threads[node] = node.download_file_thread(
+                finalLocalLocation, finalRemoteLocation
+            )
 
-        #Wait for results from threads
-        for node,thread in execute_threads.items():
+        # Gather results
+        for node, thread in execute_threads.items():
             print(f"Waiting for result from node {node.get_name()}")
-            
             try:
                 output = thread.result()
             except Exception as e:
                 print(f"Exception: {e}")
-            
-            print(f"Output: {output}")
+            else:
+                print(f"Output: {output}")
 
         return
+
 
     
     def addIPAddressToInterface(self, node, interface, ipAddress, mask):
@@ -276,3 +302,11 @@ class FabOrchestrator:
         subnet = IPv4Network(f"{intf.get_ip_addr()}/24", strict=False)
         
         return subnet
+
+
+    def getInterfaceName(self, nodeName, neighborName):
+        '''
+        Return the name of an interface (e.g., ethX) given the name of the node and who they are connected to.
+        '''
+
+        return self.slice.get_interface(f"{nodeName}-intf-{neighborName}-p1").get_device_name()
