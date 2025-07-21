@@ -1,12 +1,13 @@
 # ---
 # jupyter:
 #   jupytext:
+#     custom_cell_magics: kql
 #     formats: ipynb,py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.17.2
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -54,33 +55,65 @@
 # ---
 
 # %% [markdown]
-# ## <span style="color: #de4815"><b>Infrastructure Information</b></span>
+# ## <span style="color: #de4815"><b>Experiment Information</b></span>
+#
+# Every variable presented in the traditional Python constant fomat, ALL_CAPS, should be updated with the expected information. If interface names are not known, that is ok, please just set it to the data type None. 
 
 # %%
+from FabUtils import FabOrchestrator
+
 # Slice information
-SLICE_NAME = "bgp_1pod"
+SLICE_NAME = "clos_bgp"
+
 NETWORK_NODE_PREFIXES = "T,S,L"
 COMPUTE_NODE_PREFIXES = "C"
 
-# Failure point
-IS_SOFT_FAILURE = True
-NODE_FAILED = {
-    "name": "L-1",
-    "interface": "eth1"
-}
-NEIGHBOR_FAILED =  {
-    "name": None,
-    "interface": None
-}
-INTF_NAMES_KNOWN = True if NODE_FAILED["interface"] and (NEIGHBOR_FAILED["interface"] or IS_SOFT_FAILURE) else False
+# Experiment information
+IS_SOFT_FAILURE = False
 
-# Local directory location (where to download remote logs)
-LOG_DIR_PATH = "../logs/1209_logs"
+NODE_TO_FAIL = "L-1-1"
+NODE_INTF_NAME = None
 
-print(INTF_NAMES_KNOWN)
+NEIGHBOR_TO_FAIL = "S-1-1"
+NEIGHBOR_INTF_NAME = None
+
+try:
+    manager = FabOrchestrator(SLICE_NAME)
+
+except Exception as e:
+    print(f"Exception: {e}")
+
+# %% [markdown]
+# ## <span style="color: #de4815"><b>Run Experiment</b></span>
+
+# %% [markdown]
+# ### Determine failure type and build structures
 
 # %%
-import os
+INTF_NAMES_KNOWN = True if NODE_INTF_NAME and (NEIGHBOR_INTF_NAME or IS_SOFT_FAILURE) else False
+
+print(f"{'soft' if IS_SOFT_FAILURE else 'hard'} link failure experiment to be performed on link {NODE_FAILED['name']} <--> NEIGHBOR_FAILED['name']}")
+
+# %%
+
+# Determine the interface of the node to be failed
+failure_dict = {NODE_TO_FAIL: {"intfName": NODE_INTF_NAME if NODE_INTF_NAME else manager.getInterfaceName(NODE_TO_FAIL, NEIGHBOR_TO_FAIL)}}
+FAILED_NODE_PREFIXES = NODE_TO_FAIL
+print(f"{NODE_TO_FAIL} interface name: {failure_dict[NODE_TO_FAIL]["intfName"]}")
+
+# If the failure is a hard link failure, determine the interface on the neighbor of the link that is to be failed as well
+if(not IS_SOFT_FAILURE):
+    failure_dict = {NEIGHBOR_TO_FAIL: {"intfName": NEIGHBOR_INTF_NAME if NEIGHBOR_INTF_NAME else manager.getInterfaceName(NEIGHBOR_TO_FAIL, NODE_TO_FAIL)}}
+    FAILED_NODE_PREFIXES += f",{NEIGHBOR_TO_FAIL}"
+    print(f"{NEIGHBOR_TO_FAIL} interface name: {failure_dict[NEIGHBOR_TO_FAIL]["intfName"]}")
+
+
+
+# %% [markdown]
+# ### Create an experiment log directory
+
+# %%
+from pathlib import Path
 import time
 
 # Remote log locations
@@ -89,40 +122,29 @@ LOG_CAP_NAME = "/home/rocky/bgp_scripts/bgp_update_only.pcap"
 LOG_OVERHEAD_NAME = "/home/rocky/bgp_scripts/overhead.log"
 LOG_INTF_DOWN_NAME = "/home/rocky/bgp_scripts/intf_down.log"
 
-# If the logs directory does not already exist, create it
-subdirs = ["captures", "overhead", "convergence", "traffic"]
-if not os.path.exists(LOG_DIR_PATH):
-    for subdir in subdirs:
-        os.makedirs(os.path.join(LOG_DIR_PATH, subdir)) 
-
-# %%
-from FabUtils import FabOrchestrator
-
-try:
-    manager = FabOrchestrator(SLICE_NAME)
-    
-except Exception as e:
-    print(f"Exception: {e}")
+# Local log locations
+LOG_DIR_PATH = "../logs/bgp_soft/test_1" # Local directory location (where to download remote logs)
+subdirs = ["captures", "overhead", "convergence"]
+baseLogDir = Path(LOG_DIR_PATH)
+for sub in subdirs:
+    (baseLogDir / sub).mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
-# ## <span style="color: #de4815"><b>Run Experiment</b></span>
-
-# %%
-if(INTF_NAMES_KNOWN):
-    intfName = FAILED_NODE_INTF_NAME
-else:
-    fabricIntf = manager.slice.get_interface(f"{NODE_FAILED["name"]}-intf-{NEIGHBOR_FAILED["name"]}-p1")
-    intfName = fabricIntf.get_device_name()
+# ### Start data collection on BGP switches
 
 # %%
 # Start data collection for all nodes minus the one that is being failed.
-startLoggingCmd = "bash ~/bgp_scripts/bgp_data_collection.sh"
-manager.executeCommandsParallel(startLoggingCmd, prefixList=NETWORK_NODE_PREFIXES, excludedList=NODE_FAILED)
+#startLoggingCmd = "bash ~/bgp_scripts/bgp_data_collection.sh"
+#manager.executeCommandsParallel(startLoggingCmd, prefixList=NETWORK_NODE_PREFIXES, excludedList=NODE_FAILED)
 
+# Start data collection for all nodes, but skip the interfaces that are to be failed
 startLoggingCmd = f"bash ~/bgp_scripts/bgp_data_collection.sh {intfName}"
-manager.executeCommandsParallel(startLoggingCmd, prefixList=NODE_FAILED)
+manager.executeCommandsParallel(startLoggingCmd, prefixList=NETWORK_NODE_PREFIXES, fmt=failure_dict)
 
 print("BGP data collection started.")
+
+# %% [markdown]
+# ### Fail the specified link and let BGP reconverge the topology
 
 # %%
 print("Giving the nodes time to get configured...")
@@ -137,6 +159,9 @@ manager.executeCommandsParallel(failIntfCmd, prefixList=NODE_FAILED)
 # %%
 print("Giving the nodes time to get reconverged...")
 time.sleep(10)
+
+# %% [markdown]
+# ### Experiment teardown
 
 # %%
 stopLoggingCmd = "tmux kill-session -t bgp"
@@ -153,26 +178,30 @@ time.sleep(30)
 # %%
 # Download BGP message capture file.
 manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "captures", "{name}_update.pcap"), 
-                              LOG_CAP_NAME, prefixList=NETWORK_NODE_PREFIXES, addNodeName=True)
+                              LOG_CAP_NAME, prefixList=NETWORK_NODE_PREFIXES)
 
 # Download BGP traffic overhead analysis file.
 manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "overhead", "{name}_overhead.log"), 
-                              LOG_OVERHEAD_NAME, prefixList=NETWORK_NODE_PREFIXES, addNodeName=True)
+                              LOG_OVERHEAD_NAME, prefixList=NETWORK_NODE_PREFIXES)
 
 # Download FRR log file.
 manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "convergence", "{name}_frr.log"), 
-                              lOG_FRR_NAME, prefixList=NETWORK_NODE_PREFIXES, addNodeName=True)
+                              lOG_FRR_NAME, prefixList=NETWORK_NODE_PREFIXES)
 
 # Download the interface downtime log.
-manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "convergence", "intf_down.log"), 
-                              LOG_INTF_DOWN_NAME, prefixList=NODE_FAILED)
+manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "convergence", "{name}_intf_down.log"), 
+                              LOG_INTF_DOWN_NAME, prefixList=FAILED_NODE_PREFIXES)
 
 # %% [markdown]
 # ## <span style="color: #de4815"><b>Cleanup</b></span>
 
 # %%
 # Bring the interface back up.
-restoreIntfCmd = f"sudo ip link set dev {intfName} up"
+if(IS_SOFT_FAILURE):
+    targetNode.cmd(f"sudo tc qdisc replace dev {intfName} root netem loss 100%")
+    
+else:
+    restoreIntfCmd = f"sudo ip link set dev {intfName} up"
 
 # Run this command only on node NODE_FAILED 
-manager.executeCommandsParallel(restoreIntfCmd, prefixList=NODE_FAILED)
+manager.executeCommandsParallel(restoreIntfCmd, prefixList=FAILED_NODE_PREFIXES)
