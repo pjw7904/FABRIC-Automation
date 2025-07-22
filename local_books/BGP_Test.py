@@ -1,19 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     custom_cell_magics: kql
-#     formats: ipynb,py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.17.2
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %% [markdown]
 # # <span style="color: #de4815"><b>BGP</b></span> Reconvergence Experiment
 
@@ -22,11 +6,11 @@
 #     
 # 1. log files to show how the FRR BGP implementation handles the updates.
 # 2. Packet captures that collect the BGP UPDATE messages that the BGP implementation uses to make modifications.
-#
+# 
 # The steps this book takes are as follows:
-#
+# 
 # 1. <span style="color: #de4815"><b>Store test infrastructure information</b></span>
-#
+# 
 # 2. <span style="color: #de4815"><b>Clear all existing bgpd (FRR BGP-4 daemon) logs</b></span>
 # ---
 # ```bash
@@ -35,17 +19,17 @@
 # sudo rm /location/of/scripts/logs            # Delete additional bgpd-related logs
 # ```
 # ---
-#
+# 
 # 3. <span style="color: #de4815"><b>Bring the interface down.</b></span>
-#
+# 
 # This can be acomplished in two different ways, either by already knowing the interface name (ethX), or querying FABRIC to determine the interface name.
-#
+# 
 # ---
 # ```bash
 # sudo ip link set dev ethX down # X = interface number (ex: X = 1, eth1)
 # ```
 # ---
-#
+# 
 # 4. <span style="color: #de4815"><b>Collect the logs</b></span>
 # ---
 # ```bash
@@ -56,12 +40,10 @@
 
 # %% [markdown]
 # ## <span style="color: #de4815"><b>Experiment Information</b></span>
-#
+# 
 # Every variable presented in the traditional Python constant fomat, ALL_CAPS, should be updated with the expected information. If interface names are not known, that is ok, please just set it to the data type None. 
 
 # %%
-from FabUtils import FabOrchestrator
-
 # Slice information
 SLICE_NAME = "clos_bgp"
 
@@ -72,10 +54,17 @@ COMPUTE_NODE_PREFIXES = "C"
 IS_SOFT_FAILURE = False
 
 NODE_TO_FAIL = "L-1-1"
-NODE_INTF_NAME = None
+NODE_INTF_NAME = "eth1"
 
 NEIGHBOR_TO_FAIL = "S-1-1"
-NEIGHBOR_INTF_NAME = None
+NEIGHBOR_INTF_NAME = "eth1"
+
+LOG_DIR_PATH = "../../logs/bgp_hard_waiting/test_5" # Local directory location (where to download remote logs)
+
+# %%
+from FabUtils import FabOrchestrator
+from datetime import datetime, timedelta, timezone
+import subprocess, time
 
 try:
     manager = FabOrchestrator(SLICE_NAME)
@@ -92,22 +81,23 @@ except Exception as e:
 # %%
 INTF_NAMES_KNOWN = True if NODE_INTF_NAME and (NEIGHBOR_INTF_NAME or IS_SOFT_FAILURE) else False
 
-print(f"{'soft' if IS_SOFT_FAILURE else 'hard'} link failure experiment to be performed on link {NODE_FAILED['name']} <--> NEIGHBOR_FAILED['name']}")
+print(f"{'Soft' if IS_SOFT_FAILURE else 'Hard'} link failure experiment to be performed on link {NODE_TO_FAIL} <--> {NEIGHBOR_TO_FAIL}")
 
 # %%
-
 # Determine the interface of the node to be failed
-failure_dict = {NODE_TO_FAIL: {"intfName": NODE_INTF_NAME if NODE_INTF_NAME else manager.getInterfaceName(NODE_TO_FAIL, NEIGHBOR_TO_FAIL)}}
+failure_dict = {NODE_TO_FAIL: {"intfName": NODE_INTF_NAME if NODE_INTF_NAME 
+                               else manager.getInterfaceName(NODE_TO_FAIL, NEIGHBOR_TO_FAIL)}}
+
 FAILED_NODE_PREFIXES = NODE_TO_FAIL
 print(f"{NODE_TO_FAIL} interface name: {failure_dict[NODE_TO_FAIL]["intfName"]}")
 
 # If the failure is a hard link failure, determine the interface on the neighbor of the link that is to be failed as well
 if(not IS_SOFT_FAILURE):
-    failure_dict = {NEIGHBOR_TO_FAIL: {"intfName": NEIGHBOR_INTF_NAME if NEIGHBOR_INTF_NAME else manager.getInterfaceName(NEIGHBOR_TO_FAIL, NODE_TO_FAIL)}}
+    failure_dict[NEIGHBOR_TO_FAIL] = {"intfName": NEIGHBOR_INTF_NAME if NEIGHBOR_INTF_NAME 
+                                       else manager.getInterfaceName(NEIGHBOR_TO_FAIL, NODE_TO_FAIL)}
+    
     FAILED_NODE_PREFIXES += f",{NEIGHBOR_TO_FAIL}"
     print(f"{NEIGHBOR_TO_FAIL} interface name: {failure_dict[NEIGHBOR_TO_FAIL]["intfName"]}")
-
-
 
 # %% [markdown]
 # ### Create an experiment log directory
@@ -123,7 +113,6 @@ LOG_OVERHEAD_NAME = "/home/rocky/bgp_scripts/overhead.log"
 LOG_INTF_DOWN_NAME = "/home/rocky/bgp_scripts/intf_down.log"
 
 # Local log locations
-LOG_DIR_PATH = "../logs/bgp_soft/test_1" # Local directory location (where to download remote logs)
 subdirs = ["captures", "overhead", "convergence"]
 baseLogDir = Path(LOG_DIR_PATH)
 for sub in subdirs:
@@ -133,13 +122,12 @@ for sub in subdirs:
 # ### Start data collection on BGP switches
 
 # %%
-# Start data collection for all nodes minus the one that is being failed.
-#startLoggingCmd = "bash ~/bgp_scripts/bgp_data_collection.sh"
-#manager.executeCommandsParallel(startLoggingCmd, prefixList=NETWORK_NODE_PREFIXES, excludedList=NODE_FAILED)
+# Start data collection for nodes
+startLoggingCmd = "bash ~/bgp_scripts/bgp_data_collection.sh"
+manager.executeCommandsParallel(startLoggingCmd, prefixList=NETWORK_NODE_PREFIXES, excludedList=FAILED_NODE_PREFIXES)
 
-# Start data collection for all nodes, but skip the interfaces that are to be failed
-startLoggingCmd = f"bash ~/bgp_scripts/bgp_data_collection.sh {intfName}"
-manager.executeCommandsParallel(startLoggingCmd, prefixList=NETWORK_NODE_PREFIXES, fmt=failure_dict)
+startLoggingCmd += " {intfName}"
+manager.executeCommandsParallel(startLoggingCmd, prefixList=FAILED_NODE_PREFIXES, fmt=failure_dict)
 
 print("BGP data collection started.")
 
@@ -151,14 +139,17 @@ print("Giving the nodes time to get configured...")
 time.sleep(10)
 
 # %%
-failIntfCmd = f"bash /home/rocky/bgp_scripts/intf_down.sh {intfName}"
+# choose a time 5 seconds in the future (same for every node)
+start_at = datetime.now(timezone.utc) + timedelta(seconds=5)
+start_epoch = f"{start_at.timestamp():.3f}"   # seconds.milliseconds
 
-# Run this command only on node NODE_FAILED 
-manager.executeCommandsParallel(failIntfCmd, prefixList=NODE_FAILED)
+failIntfCmd = f"bash /home/rocky/bgp_scripts/intf_down.sh {{intfName}} {int(IS_SOFT_FAILURE)} {start_epoch}"
+
+manager.executeCommandsParallel(failIntfCmd, prefixList=FAILED_NODE_PREFIXES, fmt=failure_dict)
 
 # %%
 print("Giving the nodes time to get reconverged...")
-time.sleep(10)
+time.sleep(30)
 
 # %% [markdown]
 # ### Experiment teardown
@@ -176,21 +167,48 @@ time.sleep(30)
 # ## <span style="color: #de4815"><b>Collect Logs</b></span>
 
 # %%
-# Download BGP message capture file.
-manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "captures", "{name}_update.pcap"), 
-                              LOG_CAP_NAME, prefixList=NETWORK_NODE_PREFIXES)
+capture_local   = baseLogDir / "captures"    / "{name}_update.pcap"
+overhead_local  = baseLogDir / "overhead"    / "{name}_overhead.log"
+frr_local       = baseLogDir / "convergence" / "{name}_frr.log"
+intf_down_local = baseLogDir / "convergence" / "{name}_intf_down.log"
 
-# Download BGP traffic overhead analysis file.
-manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "overhead", "{name}_overhead.log"), 
-                              LOG_OVERHEAD_NAME, prefixList=NETWORK_NODE_PREFIXES)
+# BGP message captures
+manager.downloadFilesParallel(
+    capture_local, LOG_CAP_NAME,
+    prefixList=NETWORK_NODE_PREFIXES
+)
 
-# Download FRR log file.
-manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "convergence", "{name}_frr.log"), 
-                              lOG_FRR_NAME, prefixList=NETWORK_NODE_PREFIXES)
+# Traffic-overhead stats
+manager.downloadFilesParallel(
+    overhead_local, LOG_OVERHEAD_NAME,
+    prefixList=NETWORK_NODE_PREFIXES
+)
 
-# Download the interface downtime log.
-manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "convergence", "{name}_intf_down.log"), 
-                              LOG_INTF_DOWN_NAME, prefixList=FAILED_NODE_PREFIXES)
+# FRR daemon logs
+manager.downloadFilesParallel(
+    frr_local, lOG_FRR_NAME,
+    prefixList=NETWORK_NODE_PREFIXES
+)
+
+# Interface-down timestamps (only failed nodes)
+manager.downloadFilesParallel(
+    intf_down_local, LOG_INTF_DOWN_NAME,
+    prefixList=FAILED_NODE_PREFIXES
+)
+
+# %%
+# Create a log file to record information associated with the experiment run
+experiment_log_file = baseLogDir / "experiment.log"
+
+failureText = [
+    f"Failed node: {NODE_TO_FAIL}",
+    f"Interface name: {failure_dict[NODE_TO_FAIL]['intfName']}",
+    f"Failed neighbor: {NEIGHBOR_TO_FAIL}",
+    f"Neighbor interface name: {failure_dict[NEIGHBOR_TO_FAIL]['intfName']}",
+    f"Experiment type: {'soft' if IS_SOFT_FAILURE else 'hard'} link failure"
+]
+
+experiment_log_file.write_text("\n".join(failureText))
 
 # %% [markdown]
 # ## <span style="color: #de4815"><b>Cleanup</b></span>
@@ -198,10 +216,12 @@ manager.downloadFilesParallel(os.path.join(LOG_DIR_PATH, "convergence", "{name}_
 # %%
 # Bring the interface back up.
 if(IS_SOFT_FAILURE):
-    targetNode.cmd(f"sudo tc qdisc replace dev {intfName} root netem loss 100%")
-    
+    restoreIntfCmd = "sudo tc qdisc del dev {intfName} root netem"  
+   
 else:
-    restoreIntfCmd = f"sudo ip link set dev {intfName} up"
+    restoreIntfCmd = "sudo ip link set dev {intfName} up" 
 
 # Run this command only on node NODE_FAILED 
-manager.executeCommandsParallel(restoreIntfCmd, prefixList=FAILED_NODE_PREFIXES)
+manager.executeCommandsParallel(restoreIntfCmd, prefixList=FAILED_NODE_PREFIXES, fmt=failure_dict)
+
+
