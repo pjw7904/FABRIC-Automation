@@ -1,27 +1,11 @@
-# ---
-# jupyter:
-#   jupytext:
-#     custom_cell_magics: kql
-#     formats: ipynb,py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.11.2
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %% [markdown]
 # # <span style="color: #034694"><b>MTP</b></span> Configuration Information
-#
+# 
 # Once the MTP configuration has been added, either through the provided book (MTP_ClosBuilder) or manually, this book will provide you with commands to view information about the configuration of individual nodes in the topology.
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Topology Information</b></span>
-#
+# 
 # | Variable | Use |
 # | --- | --- |
 # | SLICE_NAME    | Name of the slice you want to access and observe |
@@ -35,10 +19,15 @@ COMPUTE_NODE_PREFIXES = "C"
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Access Slice Resources</b></span>
-#
+# 
 # The FabOrchestrator class is used to grab information. This is a class that wraps around the underlying FabLib to make certain actions easier to run.
 
 # %%
+# Get acccess to FabUtils in the local_books dir first
+import sys
+sys.path.append('..')
+
+# Then proceed with the rest of the imports (including FabUtils)
 from FabUtils import FabOrchestrator
 
 try:
@@ -49,7 +38,7 @@ except Exception as e:
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>View Routing</b></span>
-#
+# 
 # Anything involing how Linux kernel routing table.
 
 # %%
@@ -82,7 +71,7 @@ manager.executeCommandsParallel(intfStatusCmd, prefixList=NETWORK_NODE_PREFIXES)
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>View Configuration</b></span>
-#
+# 
 # Anything involving how a FABRIC book configures the MTP implementation on the slices.
 
 # %%
@@ -119,7 +108,7 @@ manager.executeCommandsParallel(outputConfigCommand, prefixList=NETWORK_NODE_PRE
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Modify Configuration - MTP Testing</b></span>
-#
+# 
 # <b>WARNING</b>: This will potentially modify how MTP or the MTP testing suite operates. Only run these if you need to make that specific change, you shouldn't run anything in this section just to try it out. If something breaks, you'll need to find a way back by adding additional commands here or by manual reconfiguration.
 
 # %%
@@ -143,7 +132,7 @@ manager.uploadFileParallel("/home/fabric/work/custom/FABRIC-Automation/remote_sc
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>View Logging</b></span>
-#
+# 
 # The Clos Builder script logs all BGP UPDATE events to /var/log/bgpd.log
 
 # %%
@@ -153,3 +142,5 @@ print("LOG ENTRIES\n")
 routingTableEntry = "PAPP6-VDAWM"
 routingTableCommand = f"sudo cat /var/log/frr/bgpd.log | grep {routingTableEntry}"
 manager.executeCommandsParallel(routingTableCommand, prefixList=NETWORK_NODE_PREFIXES)
+
+

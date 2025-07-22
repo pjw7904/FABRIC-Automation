@@ -1,26 +1,11 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.16.2
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %% [markdown]
 # # <span style="color: #034694"><b>MTP</b></span> Reconvergence Analysis
-#
+# 
 # Once the appropriate log files are collected, the results can be analyzed.
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Experiment Information</b></span>
-#
+# 
 # Iterate through each valid file in the given directory to determine metric results
 
 # %%
@@ -42,7 +27,6 @@ def getResultsFile(metricDirectory):
             yield filePath
     
     return
-
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Determine interface failure and test stop timestamps</b></span>
@@ -82,7 +66,6 @@ for logFile in getResultsFile("downtime"):
         print(f"Unknown file {logFile}")
 
 print(f"Interface failure timestamp: {failureTime}\nTest stop timestamp: {testStopTime}")
-
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Control Overhead & Blast Radius</b></span>
@@ -194,3 +177,5 @@ for logFile in getResultsFile("convergence"):
 convergenceTime = finalFailureRecoveryTimestamp - failureDetectionTimestamp
 print(f"Final failure update time: {finalFailureRecoveryTimestamp}\nFailure Detection time: {failureDetectionTimestamp}")
 print(f"Convergence time: {convergenceTime} ms")
+
+

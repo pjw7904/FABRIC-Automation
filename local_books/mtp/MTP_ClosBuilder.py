@@ -1,23 +1,8 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.16.2
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %% [markdown]
 # # <span style="color: #034694"><b>MTP</b></span> Folded-Clos Builder
-#
+# 
 # This book provides the following actions:
-#
+# 
 # 1. Building a folded-Clos topology.
 # 2. Downloading the MTP implementation as the network control-plane and data-plane on the folded-Clos topology.
 # 3. Configuring IPv4 addressing on all devices in the compute/server subnets in the topology. This includes the compute devices themselves and the leaf interfaces connected to these subnets.
@@ -25,14 +10,14 @@
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Input Required Information</b></span>
-#
+# 
 # ### <span style="color: #034694"><b>FABRIC Configuration</b></span> 
 # | Variable | Use |
 # | :-- | --- |
 # | SLICE_NAME| Name of slice you want to create. Please make sure a slice with that name does not already exist. |
 # | SITE_NAME| Name of the FABRIC site you want the nodes to be reserved at. This code does not consider inter-site situations, the entire topology is reserved on a single slice. |
 # | MEAS_ADD      | Enter True if measurements are to be taken on the slice. This requires the inclusion of a separate measurement node. If you don't understand how to use the Measurement Framework, don't set this to true. |
-#
+# 
 # ### <span style="color: #034694"><b>Folded-Clos Configuration</b></span>
 # | Variable | Use |
 # | :-- | --- |
@@ -46,7 +31,7 @@
 
 # %%
 # FABRIC Configuration
-SLICE_NAME = "mtp_test"
+SLICE_NAME = "clos_mtp"
 SITE_NAME = "WASH"
 MEAS_ADD = False
 SEC_ADD = True
@@ -57,13 +42,18 @@ NUMBER_OF_TIERS = 2
 NETWORK_NODE_PREFIXES = "T,S,L"
 COMPUTE_NODE_PREFIXES = "C"
 SOUTHBOUND_PORT_DENSITY = {1:1}
-MTP_SCRIPTS_LOCATION = "/home/fabric/work/custom/FABRIC-Automation/remote_scripts/mtp_scripts"
-TEMPLATE_LOCATION = "/home/fabric/work/custom/FABRIC-Automation/remote_scripts/mtp_templates/mtp_conf.mako"
+MTP_SCRIPTS_LOCATION = "/home/pjw7904/fabric/FABRIC-Automation/remote_scripts/mtp_scripts"
+TEMPLATE_LOCATION = "/home/pjw7904/fabric/FABRIC-Automation/remote_scripts/mtp_templates/mtp_conf.mako"
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Access the Fablib Library and Confirm Configuration</b></span>
 
 # %%
+# Get acccess to FabUtils in the local_books dir first
+import sys
+sys.path.append('..')
+
+# Then proceed with the rest of the imports (including FabUtils)
 from fabrictestbed_extensions.fablib.fablib import FablibManager as fablib_manager
 
 try: 
@@ -75,7 +65,7 @@ except Exception as e:
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Build a Graph of the Folded-Clos Topology</b></span> 
-#
+# 
 # A custom library, ClosGenerator, is used to build a graph-representation of a folded-Clos topology. MTP configuration is added as attributes to the nodes as the graph is being constructed.
 
 # %%
@@ -92,7 +82,7 @@ print(f"Folded-Clos topology details (Not considering port density changes):\n{t
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Prepare the MTP Configuration Template</b></span> 
-#
+# 
 # This book uses the Mako template engine to populate MTP-related information into the MTP configuration file (mtp.conf). The per-node MTP configuration is contained in the graph structure built in the prior section. 
 
 # %%
@@ -239,7 +229,7 @@ else:
 # ## <span style="color: #034694"><b>Submit the Slice</b></span>
 
 # %%
-# %%time
+%%time
 import json 
 
 try:
@@ -254,7 +244,7 @@ except Exception as e:
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Initalize the Measurement Framework (Optional)</b></span>
-#
+# 
 # This step both initalizes and instrumentizes the Measurement framework to use Prometheus and Grafana. If ELK is desired, modifications to the cell need to be made.
 
 # %%
@@ -268,9 +258,9 @@ if(MEAS_ADD):
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Provide Initial Configuration to Nodes</b></span> 
-#
+# 
 # If the node is a core (MTP-speaking) node, it will have the MTP implementation downloaded and compiled.
-#
+# 
 # If the node is an edge (non-MTP-speaking) node, it will have the traffic generator code installed.
 
 # %%
@@ -295,9 +285,9 @@ manager.executeCommandsParallel(edgeNodeConfig, prefixList=COMPUTE_NODE_PREFIXES
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Add IPv4 Addressing to Compute Subnet Nodes</b></span> 
-#
+# 
 # This system utilizes the addressing provided by the ClosGenerator module:
-#
+# 
 # * 192.168.0.0/16 is the compute supernet. All compute subnets are given a /24 subnet. Compute devices are given lower addresses (ex: .1) and the leaf node is given a high address (ex: .254)
 
 # %%
@@ -349,7 +339,8 @@ for nodeName in topology.iterNodes():
 if(SEC_ADD):
     logFile[f"tier_{HACKER_NODE_TIER}"][HACKER_NODE]["ssh"] = manager.slice.get_node(HACKER_NODE).get_ssh_command()
 
-
 # %%
 with open(f'{SLICE_NAME}_k{PORTS_PER_DEVICE}_t{NUMBER_OF_TIERS}_MTP.json', "w") as outfile:
     json.dump(logFile, outfile)
+
+

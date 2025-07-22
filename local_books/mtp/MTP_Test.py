@@ -1,47 +1,32 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.16.2
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %% [markdown]
 # # <span style="color: #034694"><b>MTP</b></span> Reconvergence Experiment
 
 # %% [markdown]
 # A MTP experiment consists of turning off an active control interface (i.e., not an interface on a compute node or an interface on a leaf attached to a compute subnet). The resulting behavior from the generated MTP messages that withdraw the necessary root VID are collected via log files to show how the MTP implementation handles the change.
-#
+# 
 # The steps this book takes are as follows:
-#
+# 
 # 1. <span style="color: #034694"><b>Store test infrastructure information</b></span>
-#
+# 
 # 2. <span style="color: #034694"><b>Clear the exisiting MTP log file</b></span>
 # ---
 # ```bash
 # sudo rm MTP_*.log # Delete the mtp implementation log
 # ```
 # ---
-#
+# 
 # 3. <span style="color: #034694"><b>Start the MTP implementation and complete initial convergence</b></span>
-#
+# 
 # 4. <span style="color: #034694"><b>Bring the interface down.</b></span>
-#
+# 
 # This can be acomplished in two different ways, either by already knowing the interface name (ethX), or querying FABRIC to determine the interface name.
-#
+# 
 # ---
 # ```bash
 # sudo ip link set dev ethX down # X = interface number (ex: X = 1, eth1)
 # ```
 # ---
-#
+# 
 # 5. <span style="color: #034694"><b>Collect the logs</b></span>
 # ---
 # ```bash
@@ -49,7 +34,7 @@
 # 2024/04/13 19:57:01.336 BGP: [PAPP6-VDAWM] 172.16.8.1(S-1-1) rcvd UPDATE about 192.168.2.0/24 IPv4 unicast -- withdrawn
 # ```
 # ---
-#
+# 
 # 6. <span style="color: #034694"><b>Bring the interface back up.</b></span>
 
 # %% [markdown]
@@ -88,6 +73,11 @@ if not os.path.exists(LOG_DIR_PATH):
         os.makedirs(os.path.join(LOG_DIR_PATH, subdir)) 
 
 # %%
+# Get acccess to FabUtils in the local_books dir first
+import sys
+sys.path.append('..')
+
+# Then proceed with the rest of the imports (including FabUtils)
 from FabUtils import FabOrchestrator
 
 try:
@@ -185,3 +175,5 @@ nodeDownTimes = manager.executeCommandsParallel(nodeDownTimeCmd, prefixList=NETW
 with open(os.path.join(LOG_DIR_PATH, "downtime", "nodes_down.log"), "w") as nodeLogFile:
     for node, time in nodeDownTimes.items():
         nodeLogFile.write(f"{node}:{time}")
+
+
