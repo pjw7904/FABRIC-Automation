@@ -15,22 +15,28 @@ COMPUTE_NODE_PREFIXES = "C"
 EXPERIMENT_LOG_FILE = "experiment.log"
 
 # %%
-import os
+from pathlib import Path
 
-def getResultsFile(metricDirectory):
-    directoryPath = os.path.join(LOG_DIR_PATH, metricDirectory)
+def getResultsFile(metric_directory):
+    directory_path = Path(LOG_DIR_PATH) / metric_directory
 
-    for fileName in os.listdir(directoryPath):
-        filePath = os.path.join(directoryPath, fileName)
-        yield filePath
-    
-    return
+    for file_path in directory_path.iterdir():
+        if not file_path.is_file():
+            continue
+
+        node_name = file_path.stem.split("_", 1)[0]
+        
+        yield str(file_path), node_name
+
 
 # %%
 import re
+import os
 
 HARD_LINK_FAILURE = 1
 SOFT_LINK_FAILURE = 2
+
+failedNodes = set()
 
 # Iterate through each line in the file and store the data
 experimentLogFile = os.path.join(LOG_DIR_PATH, EXPERIMENT_LOG_FILE)
@@ -40,9 +46,11 @@ with open(experimentLogFile) as file:
 
         if line.startswith("Failed node:"):
             NODE_TO_FAIL = line.split(":", 1)[1].strip()
+            failedNodes.add(NODE_TO_FAIL)
 
         elif line.startswith("Failed neighbor:"):
             NEIGHBOR_TO_FAIL = line.split(":", 1)[1].strip()
+            failedNodes.add(NEIGHBOR_TO_FAIL)
 
         elif line.startswith("Interface name:"):
             NODE_INTF_NAME = line.split(":", 1)[1].strip()
@@ -129,7 +137,7 @@ startTimeFormatted = "" # Standard clock time
 
 print(f"Valid log entries:")
 
-for logFile in getResultsFile("convergence"):
+for logFile, _ in getResultsFile("convergence"):
     if(FRR_LOG_FILE_NAME in logFile):
         # Add each node's convergence time to the convergence times list
         convergenceTimes.append(getNodeConvergenceTime(logFile))
@@ -181,16 +189,16 @@ totalAddedRoutesOverhead = 0
 
 # Blast Radius values
 totalNodeCount = 0
-effectedNodeCount = 0 # Starts at 2 for the 2 nodes that lost a link. They won't have any updates.
+effectedNodeCount = 0
 
-for logFile in getResultsFile("overhead"):
+for logFile, nodeName in getResultsFile("overhead"):
     if("overhead.log" in logFile):    
         # Control overhead value updates
         packetOverhead, withdrawnRoutesOverhead, addedRoutesOverhead = getOverhead(logFile)
 
         # Blast radius value updates
         totalNodeCount += 1
-        if(packetOverhead > 0):
+        if(packetOverhead > 0 or nodeName in failedNodes):
             effectedNodeCount += 1
 
         totalPacketOverhead += packetOverhead
