@@ -14,7 +14,7 @@ sudo dnf -y install frr frr-pythontools
 # Give permissions to user to access frr files (this requires a logout after to take effect)
 sudo usermod -a -G frr,frrvty $(logname)
 
-# Install Python and friends for traffic analysis
+# Install Python and friends for various experiment needs
 sudo dnf install -y $(cat ~/bgp_scripts/required_packages.txt)
 sudo python3 -m pip install scapy psutil
 
