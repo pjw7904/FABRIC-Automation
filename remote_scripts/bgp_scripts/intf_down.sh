@@ -50,10 +50,13 @@ fi
 # ─────────── 2. Timestamp just before action ─────────────────────────────
 write_timestamp_once          # first line in the log (post-wait)
 
-# ─────────── 3. Inject link failure ──────────────────────────────────────
+# ─────────── 3. Inject link failure using iptables ──────────────────────
 if [[ $SOFT -eq 1 ]]; then
-    sudo tc qdisc replace dev "$INTF" root netem loss 100% \
-        || fail "tc netem failed on $INTF"
+    # Starvation with iptables
+    sudo iptables -A INPUT -i "$INTF" -j DROP \
+        || fail "iptables INPUT drop failed on $INTF"
+    sudo iptables -A OUTPUT -o "$INTF" -j DROP \
+        || fail "iptables OUTPUT drop failed on $INTF"
 else
     sudo ip link set dev "$INTF" down \
         || fail "ip link down failed on $INTF"
