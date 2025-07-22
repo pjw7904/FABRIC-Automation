@@ -2,10 +2,12 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,jupyternotebooks
 
 ### Ignore all books, only percent files should be tracked ###
-local_books/*.ipynb
+local_books/*/*.ipynb
 
 ### Automation Testing ###
 logs/*
+**/*_logs/*
+**/*.json
 measurement/*
 local_books/slice_logs/*
 local_books/fab_test.py
