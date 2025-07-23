@@ -5,7 +5,7 @@
 #   [start_epoch]      absolute Unix-epoch seconds[.ms] to trigger action
 
 set -euo pipefail
-LOGFILE="/home/rocky/bgp_scripts/intf_down.log"
+LOGFILE="/home/rocky/mtp_scripts/intf_down.log"
 
 timestamp() { date +"%Y/%m/%d %H:%M:%S.%3N"; }   # human-readable
 epoch_ms()  { date +%s.%3N; }                    # seconds.milliseconds
@@ -62,4 +62,4 @@ else
         || fail "ip link down failed on $INTF"
 fi
 
-exit 0     # success → only the timestamp line is in the log
+exit 0     # success --> only the timestamp line is in the log
