@@ -51,7 +51,7 @@ LEAF_PREFIX = "L"
 COMPUTE_NODE_PREFIX = "C"
 
 # Experiment information
-IS_SOFT_FAILURE = False
+IS_SOFT_FAILURE = True
 
 NODE_TO_FAIL = "L-1-1"
 NODE_INTF_NAME = "eth2"
@@ -59,7 +59,7 @@ NODE_INTF_NAME = "eth2"
 NEIGHBOR_TO_FAIL = "S-1-1"
 NEIGHBOR_INTF_NAME = "eth4"
 
-LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/mtp/MTP_logs/mtp_hard_failure/test_1" # Local directory location (where to download remote logs)
+LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/mtp/MTP_logs/mtp_soft_failure/test_3" # Local directory location (where to download remote logs)
 
 # %%
 # Get acccess to FabUtils in the local_books dir first
@@ -185,8 +185,10 @@ print("MTP Tmux session stopped.")
 
 # %%
 mtp_local       = baseLogDir / "convergence" / "{name}_mtp.log"
-intf_down_local = baseLogDir / "convergence" / "{name}_intf_down.log"
+intf_down_local = baseLogDir / "downtime" / "{name}_intf_down.log"
 mtp_down_local  = baseLogDir / "downtime"    / "nodes_down.log"
+
+nodeDownTimeCmd = f"cat {Path(LOG_NODE_DOWN_NAME)}"
 
 # MTP implementation logs
 manager.downloadFilesParallel(
@@ -200,8 +202,7 @@ manager.downloadFilesParallel(
     prefixList=FAILED_NODE_PREFIXES
 )
 
-# MTP implementation down logs (aggregated into one log file)
-nodeDownTimeCmd = f"cat {Path(LOG_NODE_DOWN_NAME)}"
+# MTP implementation stop logs (aggregated into one log file)
 nodeDownTimes = manager.executeCommandsParallel(
     nodeDownTimeCmd,
     prefixList=NETWORK_NODE_PREFIXES,
@@ -232,17 +233,11 @@ experiment_log_file.write_text("\n".join(failureText))
 
 # %%
 # Bring the interface back up.
-if(IS_SOFT_FAILURE):
-    # Remove the DROP rules that were added for starvation
-    restoreIntfCmd = (
-        "sudo iptables -D INPUT  -i {intfName} -j DROP 2>/dev/null || true && "
-        "sudo iptables -D OUTPUT -o {intfName} -j DROP 2>/dev/null || true"
-    )
+if IS_SOFT_FAILURE:
+    restoreIntfCmd = "sudo nft delete table netdev starvation"
 else:
-    # Re-enable the link for a hard failure
     restoreIntfCmd = "sudo ip link set dev {intfName} up"
 
-# Run on the node(s) where the interface was failed
 manager.executeCommandsParallel(
     restoreIntfCmd,
     prefixList=FAILED_NODE_PREFIXES,
