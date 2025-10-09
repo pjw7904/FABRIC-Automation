@@ -1,11 +1,26 @@
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.17.2
+#   kernelspec:
+#     display_name: fabric
+#     language: python
+#     name: python3
+# ---
+
 # %% [markdown]
 # # <span style="color: #034694"><b>MTP</b></span> Reconvergence Analysis
-# 
+#
 # Once the appropriate log files are collected, the results can be analyzed.
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Experiment Information</b></span>
-# 
+#
 # Iterate through each valid file in the given directory to determine metric results
 
 # %%
@@ -31,6 +46,7 @@ def getResultsFile(metric_directory, includeNodeName=False):
             yield str(file_path), node_name
         else:
             yield str(file_path)
+
 
 
 # %%
@@ -209,6 +225,7 @@ reconvergenceTime = lastChangeTimestamp - startTimestamp
 print(f"\nDown/Start time: {startTimeFormatted}")
 print(f"Reconvergence time: {reconvergenceTime} milliseconds")
 
+
 # %% [markdown]
 # ## <span style="color: #034694"><b>Control Overhead & Blast Radius</b></span>
 
@@ -268,5 +285,3 @@ blastRadius = (effectedNodeCount/totalNodeCount) * 100
 print(f"Overhead: {totalOverhead} bytes")
 print(f"\nBlast radius: {blastRadius:.2f}% of nodes received VID failure information.")
 print(f"\tNodes receiving updated information: {effectedNodeCount}\n\tTotal nodes: {totalNodeCount}")
-
-

@@ -1,18 +1,34 @@
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.17.2
+#   kernelspec:
+#     display_name: fabric
+#     language: python
+#     name: python3
+# ---
+
 # %% [markdown]
 # # <span style="color: #de4815"><b>BGP</b></span> Reconvergence Analysis
-# 
+#
 # Once the appropriate log files are collected, the results can be analyzed.
 
 # %% [markdown]
 # ## <span style="color: #de4815"><b>Experiment Information</b></span>
-# 
+#
 # Iterate through each valid file in the given directory to determine metric results
 
 # %%
-LOG_DIR_PATH = "../../logs/bgp_hard_waiting/test_5"
+LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/bgp/BGP_logs/bgp_soft_failure_bfd/test_5"
 NETWORK_NODE_PREFIXES = "T,S,L"
 COMPUTE_NODE_PREFIXES = "C"
 EXPERIMENT_LOG_FILE = "experiment.log"
+DEBUGGING = False
 
 # %%
 from pathlib import Path
@@ -27,6 +43,7 @@ def getResultsFile(metric_directory):
         node_name = file_path.stem.split("_", 1)[0]
         
         yield str(file_path), node_name
+
 
 
 # %%
@@ -97,13 +114,15 @@ def getNodeConvergenceTime(logFile):
     '''
     For a given node/log file, determine when the node reached convergence.
     '''
+
     nodeConvergenceTime = 0
 
     with open(logFile) as file:
         logEntry = file.readline()
+        
         while logEntry:
             if(UPDATE_LOG_STATEMENT in logEntry and WITHDRAWN_LOG_STATEMENT in logEntry):
-                print(f"\t{logEntry.rstrip()}")
+                if DEBUGGING: print(f"\t{logEntry.rstrip()}")
                 
                 # Get the epoch timestamp from the log entry.
                 entryTime = getBGPTimestamp(logEntry)
@@ -135,7 +154,7 @@ convergenceTimes = [] # Store all of the node's convergence time's.
 startTimestamp = 0 # Time when the interface went down.
 startTimeFormatted = "" # Standard clock time
 
-print(f"Valid log entries:")
+if DEBUGGING: print(f"Valid log entries:")
 
 for logFile, _ in getResultsFile("convergence"):
     if(FRR_LOG_FILE_NAME in logFile):
@@ -159,6 +178,7 @@ reconvergenceTime = lastChangeTimestamp - startTimestamp
 
 print(f"\nDown/Start time: {startTimeFormatted}")
 print(f"Reconvergence time: {reconvergenceTime} milliseconds")
+
 
 # %% [markdown]
 # ## <span style="color: #de4815"><b>Control Overhead & Blast Radius</b></span>
@@ -213,5 +233,3 @@ Added Routes Overhead: {totalAddedRoutesOverhead} bytes''')
 
 print(f"\nBlast radius: {blastRadius:.2f}% of nodes received updated prefix information.")
 print(f"\tNodes receiving updated information: {effectedNodeCount}\n\tTotal nodes: {totalNodeCount}")
-
-
