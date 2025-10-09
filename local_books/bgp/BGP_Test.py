@@ -1,3 +1,19 @@
+# ---
+# jupyter:
+#   jupytext:
+#     custom_cell_magics: kql
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.17.2
+#   kernelspec:
+#     display_name: fabric
+#     language: python
+#     name: python3
+# ---
+
 # %% [markdown]
 # # <span style="color: #de4815"><b>BGP</b></span> Reconvergence Experiment
 
@@ -6,11 +22,11 @@
 #     
 # 1. log files to show how the FRR BGP implementation handles the updates.
 # 2. Packet captures that collect the BGP UPDATE messages that the BGP implementation uses to make modifications.
-# 
+#
 # The steps this book takes are as follows:
-# 
+#
 # 1. <span style="color: #de4815"><b>Store test infrastructure information</b></span>
-# 
+#
 # 2. <span style="color: #de4815"><b>Clear all existing bgpd (FRR BGP-4 daemon) logs</b></span>
 # ---
 # ```bash
@@ -19,17 +35,17 @@
 # sudo rm /location/of/scripts/logs            # Delete additional bgpd-related logs
 # ```
 # ---
-# 
+#
 # 3. <span style="color: #de4815"><b>Bring the interface down.</b></span>
-# 
+#
 # This can be acomplished in two different ways, either by already knowing the interface name (ethX), or querying FABRIC to determine the interface name.
-# 
+#
 # ---
 # ```bash
 # sudo ip link set dev ethX down # X = interface number (ex: X = 1, eth1)
 # ```
 # ---
-# 
+#
 # 4. <span style="color: #de4815"><b>Collect the logs</b></span>
 # ---
 # ```bash
@@ -40,7 +56,7 @@
 
 # %% [markdown]
 # ## <span style="color: #de4815"><b>Experiment Information</b></span>
-# 
+#
 # Every variable presented in the traditional Python constant fomat, ALL_CAPS, should be updated with the expected information. If interface names are not known, that is ok, please just set it to the data type None. 
 
 # %%
@@ -59,12 +75,16 @@ NODE_INTF_NAME = "eth1"
 NEIGHBOR_TO_FAIL = "S-1-1"
 NEIGHBOR_INTF_NAME = "eth1"
 
-LOG_DIR_PATH = "../../logs/bgp_hard_waiting/test_5" # Local directory location (where to download remote logs)
+LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/bgp/BGP_logs/bgp_soft_failure_bfd/test_6" # Local directory location (where to download remote logs)
 
 # %%
+# Get acccess to FabUtils in the local_books dir first
+import sys
+sys.path.append('..')
+
+# Then proceed with the rest of the imports (including FabUtils)
 from FabUtils import FabOrchestrator
 from datetime import datetime, timedelta, timezone
-import subprocess, time
 
 try:
     manager = FabOrchestrator(SLICE_NAME)
@@ -149,7 +169,7 @@ manager.executeCommandsParallel(failIntfCmd, prefixList=FAILED_NODE_PREFIXES, fm
 
 # %%
 print("Giving the nodes time to get reconverged...")
-time.sleep(30)
+time.sleep(35)
 
 # %% [markdown]
 # ### Experiment teardown
@@ -204,7 +224,7 @@ failureText = [
     f"Failed node: {NODE_TO_FAIL}",
     f"Interface name: {failure_dict[NODE_TO_FAIL]['intfName']}",
     f"Failed neighbor: {NEIGHBOR_TO_FAIL}",
-    f"Neighbor interface name: {failure_dict[NEIGHBOR_TO_FAIL]['intfName']}",
+    f"Neighbor interface name: {failure_dict[NEIGHBOR_TO_FAIL]['intfName'] if not IS_SOFT_FAILURE else 'N/A'}",
     f"Experiment type: {'soft' if IS_SOFT_FAILURE else 'hard'} link failure"
 ]
 
@@ -216,12 +236,18 @@ experiment_log_file.write_text("\n".join(failureText))
 # %%
 # Bring the interface back up.
 if(IS_SOFT_FAILURE):
-    restoreIntfCmd = "sudo tc qdisc del dev {intfName} root netem"  
-   
+    # Remove the DROP rules that were added for starvation
+    restoreIntfCmd = (
+        "sudo iptables -D INPUT  -i {intfName} -j DROP 2>/dev/null || true && "
+        "sudo iptables -D OUTPUT -o {intfName} -j DROP 2>/dev/null || true"
+    )
 else:
-    restoreIntfCmd = "sudo ip link set dev {intfName} up" 
+    # Re-enable the link for a hard failure
+    restoreIntfCmd = "sudo ip link set dev {intfName} up"
 
-# Run this command only on node NODE_FAILED 
-manager.executeCommandsParallel(restoreIntfCmd, prefixList=FAILED_NODE_PREFIXES, fmt=failure_dict)
-
-
+# Run on the node(s) where the interface was failed
+manager.executeCommandsParallel(
+    restoreIntfCmd,
+    prefixList=FAILED_NODE_PREFIXES,
+    fmt=failure_dict
+)
