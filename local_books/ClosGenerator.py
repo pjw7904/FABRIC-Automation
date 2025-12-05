@@ -676,7 +676,6 @@ class BGPDCNConfig(ClosGenerator):
 
                 if(tier == self.LEAF_TIER and self.singleComputeSubnet):
                     addr = self.clos.nodes[node]["ipv4"]["compute"]
-                    logFile.write(f"\t\tcompute - {addr}\n")
                     jsonData[f"tier_{tier}"][node]["southbound"].append(f"compute - {addr}")
                 else:
                     for southNode in self.clos.nodes[node]["southbound"]:
@@ -689,7 +688,7 @@ class BGPDCNConfig(ClosGenerator):
         return False if node == "compute" else self.clos.nodes[node]["tier"] > self.COMPUTE_TIER
 
     def isSecurityNode(self, node):
-        return True if node.startswith(SEC_NAME) else False
+        return True if node.startswith(self.SEC_NAME) else False
 
     def iterNetwork(self, fabricFormating=False):
         """
