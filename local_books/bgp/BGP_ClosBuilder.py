@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: fabric
 #     language: python
 #     name: python3
 # ---
@@ -44,15 +44,14 @@
 # | COMPUTE_NODE_PREFIXES | The naming prefix(es) for compute/non-BGP-speaking nodes |
 # | SINGLE_COMPUTE_SUBNET     | If you want a leaf to only have one compute subnet, then set this to true. Otherwise, all compute nodes off of a leaf will be contained in their own subnet. |
 # | SOUTHBOUND_PORT_DENSITY | If you want to change how many southbound ports are used for a device at a given tier, it needs to be placed in a dictonary with the key being the tier and the value being the updated southbound port density. For example, If I want tier 3 spines to only have 2 southbound ports, I would modify this variable to show {3:2}. |
-# | ADD_SEC_NODE | If you want to add a security node to perform experiments with a simulated hacker, set this to true.
+# | SEC_ADD | If you want to add a security node to perform experiments with a simulated hacker, set this to true.
 # | BGP_SCRIPTS_LOCATION     | The full path to the bgp_scripts directory. Don't change the name of the files inside of the directory unless you change it in this book as well. |
 # | TEMPLATE_LOCATION     | The full path to the BGP Mako template. You don't need to understand how Mako works, the book takes care of it. Don't change the name of the files inside of the directory unless you change it in this book as well. |
 
 # %%
 # FABRIC Configuration
-SLICE_NAME = "clos_bgp"
+SLICE_NAME = "test_bgp"
 SITE_NAME = "MASS"
-MEAS_ADD = False
 
 # Folded-Clos Configuration
 PORTS_PER_DEVICE = 4
@@ -62,14 +61,17 @@ COMPUTE_NODE_PREFIXES = "C"
 SEC_NODE_PREFIX = "H"
 SINGLE_COMPUTE_SUBNET = False
 SOUTHBOUND_PORT_DENSITY = {1:1}
-ADD_SEC_NODE = False
-BGP_SCRIPTS_LOCATION = "/home/fabric/work/custom/FABRIC-Automation/remote_scripts/bgp_scripts"
-TEMPLATE_LOCATION = "/home/fabric/work/custom/FABRIC-Automation/remote_scripts/frr_templates/frr_conf_bgp.mako"
+BGP_SCRIPTS_LOCATION = "/home/pjw7904/fabric/FABRIC-Automation/remote_scripts/bgp_scripts"
+TEMPLATE_LOCATION = "/home/pjw7904/fabric/FABRIC-Automation/remote_scripts/frr_templates/frr_conf_bgp.mako"
 
 # %% [markdown]
 # ## <span style="color: #de4815"><b>Access the Fablib Library and Confirm Configuration</b></span>
 
 # %%
+# Get acccess to FabUtils in the local_books dir first
+import sys
+sys.path.append('..')
+
 from fabrictestbed_extensions.fablib.fablib import FablibManager as fablib_manager
 
 try: 
@@ -90,8 +92,7 @@ from ClosGenerator import *
 topology = BGPDCNConfig(PORTS_PER_DEVICE, 
                         NUMBER_OF_TIERS, 
                         southboundPortsConfig=SOUTHBOUND_PORT_DENSITY, 
-                        singleComputeSubnet=SINGLE_COMPUTE_SUBNET,
-                        addSecurityNode=ADD_SEC_NODE)
+                        singleComputeSubnet=SINGLE_COMPUTE_SUBNET)
 topology.buildGraph()
 logFile = topology.jsonGraphInfo()
 
@@ -117,52 +118,13 @@ except Exception as e:
 # ## <span style="color: #de4815"><b>Parse the folded-Clos Configuration and Create the Slice</b></span> 
 
 # %%
-import os
-
-# CONFIGURATION FOR BGP-SPEAKING LEAF AND SPINE NODES
-def addBGPConfiguration(node, nodeInfo, topology, bgpTemplate):
-    '''
-    Prepare a node for the FRR BGP-4 implementation to be installed.
-    '''
-
-    # Store information about BGP-speaking neighbors to configure neighborship
-    neighboringNodes = []
-    
-    # Find the node's BGP-speaking neighbors and determine their ASN as well as their IPv4 address used on the subnet shared by the nodes.
-    for neighbor, addr in topology.getNodeAttribute(node, 'ipv4').items():
-        if(topology.isNetworkNode(neighbor)):
-            neighboringNodes.append({'asn':topology.getNodeAttribute(neighbor, 'ASN'), 'ip':topology.getNodeAttribute(neighbor, 'ipv4', node)})
-
-    # In addition to storing neighbor information, store any compute subnets that the node must advertise to neighbors (leaf's only).
-    nodeTemplate = {'neighbors':neighboringNodes, 'bgp_asn': topology.getNodeAttribute(node, 'ASN'), 'networks': topology.getNodeAttribute(node, 'advertise')}
-
-    # Process the stored information and render a custom frr.conf.
-    nodeBGPData = bgpTemplate.render(**nodeTemplate)
-
-    # Add FABRIC post-boot tasks to get the node ready for FRR installation
-    nodeInfo.add_post_boot_upload_directory(BGP_SCRIPTS_LOCATION,'.')
-    nodeInfo.add_post_boot_execute(f'sudo echo -e "{nodeBGPData}" > bgp_scripts/frr.conf')
-    nodeInfo.add_post_boot_execute('sudo chmod +x /home/rocky/bgp_scripts/*.sh')
-
-    return
-
-# CONFIGURATION FOR NON-BGP-SPEAKING COMPUTE NODES
-def addComputeConfiguration(nodeInfo):
-    '''
-    Prepare a node for traffic testing.
-    '''
-    nodeInfo.add_post_boot_upload_directory(BGP_SCRIPTS_LOCATION,'.')
-    nodeInfo.add_post_boot_execute('sudo chmod +x /home/rocky/bgp_scripts/*.sh') # added sudo to the front of both of them and added all *.sh to execute
-
-    return
-
 # Create the slice
 slice = fablib.new_slice(name=SLICE_NAME)
 
 addedNodes = {} # Visited nodes structure, format = name : nodeInfo
 
 # Add slice-specific information to the log file
-logFile.update({"name": SLICE_NAME, "site": SITE_NAME, "meas": MEAS_ADD})
+logFile.update({"name": SLICE_NAME, "site": SITE_NAME})
 
 # Iterate over each network in the topology and configure each interface connected to the network, and the network itself.
 for networkInfo in topology.iterNetwork(fabricFormating=True):
@@ -182,12 +144,6 @@ for networkInfo in topology.iterNetwork(fabricFormating=True):
             else:
                 nodeInfo = slice.add_node(name=node, cores=1, ram=4, image='default_rocky_8', site=SITE_NAME)
 
-            # If the node is a non-compute node, it needs FRR-BGP configuration instructions.
-            if(topology.isNetworkNode(node)):
-                addBGPConfiguration(node, nodeInfo, topology, bgpTemplate)
-            else:
-                addComputeConfiguration(nodeInfo)
-
             addedNodes[node] = nodeInfo
             print(f"\tAdded node {node} to the slice.")
 
@@ -204,28 +160,10 @@ for networkInfo in topology.iterNetwork(fabricFormating=True):
     print(f"\tAdded network {network}")
 
 # %% [markdown]
-# ## <span style="color: #de4815"><b>Add a Measurement Node (Optional)</b></span> 
-
-# %%
-if(MEAS_ADD):
-    import mflib 
-    print(f"MFLib version  {mflib.__version__} " )
-
-    from mflib.mflib import MFLib
-
-    # Add measurement node to topology using static method.
-    MFLib.addMeasNode(slice, disk=100, image='docker_ubuntu_20', site=SITE_NAME)
-    print("Measurement node added.")
-
-else:
-    print("No measurement node added.")
-
-# %% [markdown]
 # ## <span style="color: #de4815"><b>Submit the Slice</b></span>
 
 # %%
 # %%time
-import json 
 
 try:
     # Submit Slice Request
@@ -236,20 +174,6 @@ try:
 except Exception as e:
     print(f"Slice Fail: {e}")
     traceback.print_exc()
-
-# %% [markdown]
-# ## <span style="color: #de4815"><b>Initalize the Measurement Framework (Optional)</b></span>
-#
-# This step both initalizes and instrumentizes the Measurement framework to use Prometheus and Grafana. If ELK is desired, modifications to the cell need to be made.
-
-# %%
-if(MEAS_ADD):
-    mf = MFLib(SLICE_NAME) # Initalize
-    instrumetize_results = mf.instrumentize( ["prometheus"] ) # Instrumentize
-    
-    # Grafana SSH Tunnel Command
-    print(mf.grafana_tunnel)
-    print(f"Browse to https://localhost:{mf.grafana_tunnel_local_port}/grafana/dashboards?query=%2A")
 
 # %% [markdown]
 # ## <span style="color: #de4815"><b>Provide Initial Configuration to Nodes</b></span> 
@@ -266,6 +190,41 @@ try:
     
 except Exception as e:
     print(f"Exception: {e}")
+
+
+# %%
+# CONFIGURATION FOR BGP-SPEAKING LEAF AND SPINE NODES
+def addBGPConfiguration(node, topology, bgpTemplate):
+    '''
+    Prepare a node for the FRR BGP-4 implementation to be installed.
+    '''
+
+    # Store information about BGP-speaking neighbors to configure neighborship
+    neighboringNodes = []
+    
+    # Find the node's BGP-speaking neighbors and determine their ASN as well as their IPv4 address used on the subnet shared by the nodes.
+    for neighbor, _ in topology.getNodeAttribute(node, 'ipv4').items():
+        if(topology.isNetworkNode(neighbor)):
+            neighboringNodes.append({'asn':topology.getNodeAttribute(neighbor, 'ASN'), 'ip':topology.getNodeAttribute(neighbor, 'ipv4', node)})
+
+    # In addition to storing neighbor information, store any compute subnets that the node must advertise to neighbors (leaf's only).
+    nodeTemplate = {'neighbors':neighboringNodes, 'bgp_asn': topology.getNodeAttribute(node, 'ASN'), 'networks': topology.getNodeAttribute(node, 'advertise')}
+
+    # Process the stored information and render a custom frr.conf.
+    nodeBGPData = bgpTemplate.render(**nodeTemplate)
+
+    # Perform the transfer to the node-specific configuration file
+    manager.executeCommandsParallel(f'sudo echo -e "{nodeBGPData}" > bgp_scripts/frr.conf', prefixList=node)
+
+    return
+
+# Upload the scripts directory for all nodes (switches + servers) and provide the correct permissions
+manager.uploadDirectoryParallel(BGP_SCRIPTS_LOCATION)
+manager.executeCommandsParallel('sudo chmod +x /home/rocky/bgp_scripts/*.sh')
+
+# Configure the switches
+for node in topology.iterNodes(noComputeNodes=True):
+    addBGPConfiguration(node, topology, bgpTemplate)
 
 # %%
 # Commands to execute the bash scripts configuring the nodes
@@ -301,7 +260,7 @@ for node in topology.iterNodes():
     for neighbor, currentAddress in topology.getNodeAttribute(node, 'ipv4').items():
         # Access the interface from FABRIC.
         intfName = f"{node}-intf-{neighbor}-p1" # Naming is a bit strange, but is formatted in FABRIC as such.
-        intf = slice.get_interface(intfName)
+        intf = manager.slice.get_interface(intfName)
 
         # Convert the address and subnet into ipaddress objects for FABRIC processing.
         fabAddress = IPv4Address(currentAddress)
@@ -331,8 +290,10 @@ for node in topology.iterNodes():
 for nodeName in topology.iterNodes():
     tierNumber = topology.getNodeAttribute(nodeName, 'tier')
     logFile[f"tier_{tierNumber}"][nodeName]["ssh"] = manager.slice.get_node(nodeName).get_ssh_command()
-    
+
 
 # %%
+import json
+
 with open(f'{SLICE_NAME}_k{PORTS_PER_DEVICE}_t{NUMBER_OF_TIERS}_BGP.json', "w") as outfile:
     json.dump(logFile, outfile)
