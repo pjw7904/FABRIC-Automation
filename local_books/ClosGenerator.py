@@ -750,6 +750,7 @@ class MTPConfig(ClosGenerator):
 
     COMPUTE_SUPERNET = '192.168.0.0/16'
     COMPUTE_SUBNET_BITS = 8
+    NEXT_SUBNET = 0 # For popping the network list
 
     def __init__(self, k, t, singleComputeSubnet=False, **kwargs):
         """
@@ -766,6 +767,7 @@ class MTPConfig(ClosGenerator):
 
         # Define the address space for the core and edge networks
         self.edgeNetworks = list(IPv4Network(self.COMPUTE_SUPERNET).subnets(prefixlen_diff=self.COMPUTE_SUBNET_BITS))
+        self.edgeNetworks.pop(self.NEXT_SUBNET) # remove subnet 0 for experiment purposes
         
         # If only one compute subnet should be hanging off a leaf, then each leaf needs to be given a specific subnet
         self.singleComputeSubnet = singleComputeSubnet
@@ -820,15 +822,13 @@ class MTPConfig(ClosGenerator):
         :param northNode: The node in tier N.
         :param southNode: The node in tier N-1.
         """
-        
-        NEXT_SUBNET = 0
 
         # If a single compute subnet is already defined for the leaf, reuse it and don't generate a new edge subnet. 
         if(northNode in self.leafComputeSubnets):
             subnet = self.leafComputeSubnets[northNode]
         else:
             # Get next available edge subnet.
-            subnet = list(self.edgeNetworks.pop(NEXT_SUBNET))[1:-1] # Remove network and broadcast address.
+            subnet = list(self.edgeNetworks.pop(self.NEXT_SUBNET))[1:-1] # Remove network and broadcast address.
 
             northAddress = subnet.pop() # Grab the last host address for the leaf node on the network.
 
