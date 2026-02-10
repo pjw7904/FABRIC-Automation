@@ -392,6 +392,7 @@ class BGPDCNConfig(ClosGenerator):
     COMPUTE_SUPERNET = '192.168.0.0/16'
     LEAF_SPINE_SUBNET_BITS = 12
     COMPUTE_SUBNET_BITS = 8
+    NEXT_SUBNET = 0
 
     # Security node Constants.
     FIRST_TOF_NODE_NAME = "T-1"
@@ -417,7 +418,9 @@ class BGPDCNConfig(ClosGenerator):
        
         # Define the address space for the core and edge networks
         self.coreNetworks = list(IPv4Network(self.LEAF_SPINE_SUPERNET).subnets(prefixlen_diff=self.LEAF_SPINE_SUBNET_BITS))
+
         self.edgeNetworks = list(IPv4Network(self.COMPUTE_SUPERNET).subnets(prefixlen_diff=self.COMPUTE_SUBNET_BITS))
+        self.edgeNetworks.pop(self.NEXT_SUBNET) # remove subnet 0 for experiment purposes
         
         # If only one compute subnet should be hanging off a leaf, then each leaf needs to be given a specific subnet
         self.singleComputeSubnet = singleComputeSubnet
@@ -533,7 +536,7 @@ class BGPDCNConfig(ClosGenerator):
         :param southNode: The node in tier N-1.
         """
         
-        NEXT_SUBNET = 0
+
 
         # If a single compute subnet is already defined for the leaf, reuse it and don't generate a new edge subnet. 
         if(northNode in self.leafComputeSubnets):
@@ -542,7 +545,7 @@ class BGPDCNConfig(ClosGenerator):
 
         else:
             # Get next available edge subnet.
-            subnet = list(self.edgeNetworks.pop(NEXT_SUBNET))[:-1] # Remove broadcast address.
+            subnet = list(self.edgeNetworks.pop(self.NEXT_SUBNET))[:-1] # Remove broadcast address.
 
             networkAddress = subnet.pop(0) # Grab the network address to be advertised by BGP.
             northAddress = subnet.pop() # Grab the last host address for the leaf node on the network.
@@ -572,11 +575,9 @@ class BGPDCNConfig(ClosGenerator):
         :param northNode: The node in tier N.
         :param southNode: The node in tier N-1.
         """
-        
-        NEXT_SUBNET = 0
  
         # Get next available core subnet.
-        subnet = list(self.coreNetworks.pop(NEXT_SUBNET))[1:-1] # Remove network and broadcast address.
+        subnet = list(self.coreNetworks.pop(self.NEXT_SUBNET))[1:-1] # Remove network and broadcast address.
 
         northAddress = subnet.pop(0) # Grab the next available low host address.
         southAddress = subnet.pop(0)
