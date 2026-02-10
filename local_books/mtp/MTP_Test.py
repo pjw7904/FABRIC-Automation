@@ -1,12 +1,13 @@
 # ---
 # jupyter:
 #   jupytext:
+#     custom_cell_magics: kql
 #     formats: ipynb,py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.2
+#       jupytext_version: 1.11.2
 #   kernelspec:
 #     display_name: fabric
 #     language: python
@@ -66,15 +67,16 @@ LEAF_PREFIX = "L"
 COMPUTE_NODE_PREFIX = "C"
 
 # Experiment information
-IS_SOFT_FAILURE = True
+IS_SOFT_FAILURE = False
+IS_HYBRID_FAILURE = True # Only runs if soft failure is false
 
 NODE_TO_FAIL = "L-1-1"
-NODE_INTF_NAME = "eth2"
+NODE_INTF_NAME = None
 
 NEIGHBOR_TO_FAIL = "S-1-1"
-NEIGHBOR_INTF_NAME = "eth4"
+NEIGHBOR_INTF_NAME = None
 
-LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/mtp/MTP_logs/mtp_soft_failure/test_3" # Local directory location (where to download remote logs)
+LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/mtp/MTP_logs/mtp_soft_failure/extra_tests/test_1"
 
 # %%
 # Get acccess to FabUtils in the local_books dir first
@@ -140,7 +142,7 @@ FAILED_NODE_PREFIXES = NODE_TO_FAIL
 print(f"{NODE_TO_FAIL} interface name: {failure_dict[NODE_TO_FAIL]["intfName"]}")
 
 # If the failure is a hard link failure, determine the interface on the neighbor of the link that is to be failed as well
-if(not IS_SOFT_FAILURE):
+if(not IS_SOFT_FAILURE and not IS_HYBRID_FAILURE):
     failure_dict[NEIGHBOR_TO_FAIL] = {"intfName": NEIGHBOR_INTF_NAME if NEIGHBOR_INTF_NAME 
                                        else manager.getInterfaceName(NEIGHBOR_TO_FAIL, NODE_TO_FAIL)}
     
