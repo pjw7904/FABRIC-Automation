@@ -7,7 +7,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.2
+#       jupytext_version: 1.18.1
 #   kernelspec:
 #     display_name: fabric
 #     language: python
@@ -67,20 +67,30 @@ NETWORK_NODE_PREFIXES = "T,S,L"
 COMPUTE_NODE_PREFIXES = "C"
 
 # Experiment information
-IS_SOFT_FAILURE = False
+# Choose exactly one: "soft", "hard", "hybrid"
+FAILURE_MODE = "hybrid"
 
 NODE_TO_FAIL = "L-1-1"
-NODE_INTF_NAME = "eth1"
+NODE_INTF_NAME = None
 
 NEIGHBOR_TO_FAIL = "S-1-1"
-NEIGHBOR_INTF_NAME = "eth1"
+NEIGHBOR_INTF_NAME = None
 
-LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/bgp/BGP_logs/bgp_soft_failure_bfd/test_6" # Local directory location (where to download remote logs)
+LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/bgp/BGP_logs/bgp_soft_failure_bfd/test_6" # Local dir (download target)
 
 # %%
 # Get acccess to FabUtils in the local_books dir first
 import sys
 sys.path.append('..')
+
+# Detemine if the failure type is valid
+FAILURE_MODE = FAILURE_MODE.strip().lower()
+if FAILURE_MODE not in {"soft", "hard", "hybrid"}:
+    raise ValueError("FAILURE_MODE must be one of: 'soft', 'hard', 'hybrid'")
+
+IS_SOFT_FAILURE   = (FAILURE_MODE == "soft")
+IS_HYBRID_FAILURE = (FAILURE_MODE == "hybrid")
+WILL_FAIL_NEIGHBOR = (FAILURE_MODE == "hard")
 
 # Then proceed with the rest of the imports (including FabUtils)
 from FabUtils import FabOrchestrator
@@ -99,25 +109,29 @@ except Exception as e:
 # ### Determine failure type and build structures
 
 # %%
-INTF_NAMES_KNOWN = True if NODE_INTF_NAME and (NEIGHBOR_INTF_NAME or IS_SOFT_FAILURE) else False
+SOFT_MODE = IS_SOFT_FAILURE
+INTF_NAMES_KNOWN = bool(NODE_INTF_NAME) and (bool(NEIGHBOR_INTF_NAME) if WILL_FAIL_NEIGHBOR else True)
 
-print(f"{'Soft' if IS_SOFT_FAILURE else 'Hard'} link failure experiment to be performed on link {NODE_TO_FAIL} <--> {NEIGHBOR_TO_FAIL}")
+print(f"{FAILURE_MODE.capitalize()} link failure experiment to be performed on link {NODE_TO_FAIL} <--> {NEIGHBOR_TO_FAIL}")
 
 # %%
 # Determine the interface of the node to be failed
-failure_dict = {NODE_TO_FAIL: {"intfName": NODE_INTF_NAME if NODE_INTF_NAME 
-                               else manager.getInterfaceName(NODE_TO_FAIL, NEIGHBOR_TO_FAIL)}}
+failure_dict = {
+    NODE_TO_FAIL: {
+        "intfName": NODE_INTF_NAME if NODE_INTF_NAME else manager.getInterfaceName(NODE_TO_FAIL, NEIGHBOR_TO_FAIL)
+    }
+}
 
 FAILED_NODE_PREFIXES = NODE_TO_FAIL
-print(f"{NODE_TO_FAIL} interface name: {failure_dict[NODE_TO_FAIL]["intfName"]}")
+print(f"{NODE_TO_FAIL} interface name: {failure_dict[NODE_TO_FAIL]['intfName']}")
 
-# If the failure is a hard link failure, determine the interface on the neighbor of the link that is to be failed as well
-if(not IS_SOFT_FAILURE):
-    failure_dict[NEIGHBOR_TO_FAIL] = {"intfName": NEIGHBOR_INTF_NAME if NEIGHBOR_INTF_NAME 
-                                       else manager.getInterfaceName(NEIGHBOR_TO_FAIL, NODE_TO_FAIL)}
-    
+# If the failure is a true hard failure, also fail the neighbor side
+if WILL_FAIL_NEIGHBOR:
+    failure_dict[NEIGHBOR_TO_FAIL] = {
+        "intfName": NEIGHBOR_INTF_NAME if NEIGHBOR_INTF_NAME else manager.getInterfaceName(NEIGHBOR_TO_FAIL, NODE_TO_FAIL)
+    }
     FAILED_NODE_PREFIXES += f",{NEIGHBOR_TO_FAIL}"
-    print(f"{NEIGHBOR_TO_FAIL} interface name: {failure_dict[NEIGHBOR_TO_FAIL]["intfName"]}")
+    print(f"{NEIGHBOR_TO_FAIL} interface name: {failure_dict[NEIGHBOR_TO_FAIL]['intfName']}")
 
 # %% [markdown]
 # ### Create an experiment log directory
@@ -163,7 +177,7 @@ time.sleep(10)
 start_at = datetime.now(timezone.utc) + timedelta(seconds=5)
 start_epoch = f"{start_at.timestamp():.3f}"   # seconds.milliseconds
 
-failIntfCmd = f"bash /home/rocky/bgp_scripts/intf_down.sh {{intfName}} {int(IS_SOFT_FAILURE)} {start_epoch}"
+failIntfCmd = f"bash /home/rocky/bgp_scripts/intf_down.sh {{intfName}} {int(SOFT_MODE)} {start_epoch}"
 
 manager.executeCommandsParallel(failIntfCmd, prefixList=FAILED_NODE_PREFIXES, fmt=failure_dict)
 
@@ -220,12 +234,13 @@ manager.downloadFilesParallel(
 # Create a log file to record information associated with the experiment run
 experiment_log_file = baseLogDir / "experiment.log"
 
+neighbor_intf = failure_dict.get(NEIGHBOR_TO_FAIL, {}).get('intfName', 'N/A')
 failureText = [
     f"Failed node: {NODE_TO_FAIL}",
     f"Interface name: {failure_dict[NODE_TO_FAIL]['intfName']}",
     f"Failed neighbor: {NEIGHBOR_TO_FAIL}",
-    f"Neighbor interface name: {failure_dict[NEIGHBOR_TO_FAIL]['intfName'] if not IS_SOFT_FAILURE else 'N/A'}",
-    f"Experiment type: {'soft' if IS_SOFT_FAILURE else 'hard'} link failure"
+    f"Neighbor interface name: {neighbor_intf}",
+    f"Experiment type: {FAILURE_MODE} link failure",
 ]
 
 experiment_log_file.write_text("\n".join(failureText))
