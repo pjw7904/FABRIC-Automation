@@ -60,30 +60,32 @@
 
 # %%
 # Slice information
-SLICE_NAME = "clos_mtp"
+SLICE_NAME = "test_mtp"
 
 SPINE_PREFIXES = "T,S"
 LEAF_PREFIX = "L"
 COMPUTE_NODE_PREFIX = "C"
 
 # Experiment information
-# Choose exactly one: "soft", "hard", "hybrid"
+## Choose exactly one: "soft", "hard", "hybrid"
 FAILURE_MODE = "hybrid"
 
-NODE_TO_FAIL = "L-1-1"
+## At minimum, the node and neighbor to fail must be defined. 
+## If you know the interface names already, you can add them. Otherwise, leave them as None.
+NODE_TO_FAIL = "L-1"
 NODE_INTF_NAME = None
 
-NEIGHBOR_TO_FAIL = "S-1-1"
+NEIGHBOR_TO_FAIL = "T-1"
 NEIGHBOR_INTF_NAME = None
 
-LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/mtp/MTP_logs/mtp_soft_failure/extra_tests/test_1"
+LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/mtp/MTP_logs/mtp_hybrid_failure/test_1"
 
 # %%
 # Get acccess to FabUtils in the local_books dir first
 import sys
 sys.path.append('..')
 
-# Detemine if the failure type is value
+# Detemine if the failure type is valid
 FAILURE_MODE = FAILURE_MODE.strip().lower()
 if FAILURE_MODE not in {"soft", "hard", "hybrid"}:
     raise ValueError("FAILURE_MODE must be one of: 'soft', 'hard', 'hybrid'")
@@ -258,6 +260,7 @@ failureText = [
 ]
 
 experiment_log_file.write_text("\n".join(failureText))
+print("Log file created.")
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Cleanup</b></span>
