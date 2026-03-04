@@ -75,10 +75,13 @@ FAILURE_MODE = "hybrid"
 NODE_TO_FAIL = "L-1"
 NODE_INTF_NAME = None
 
-NEIGHBOR_TO_FAIL = "T-1"
+NEIGHBOR_TO_FAIL = "T-2"
 NEIGHBOR_INTF_NAME = None
 
-LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/mtp/MTP_logs/mtp_hybrid_failure/test_1"
+## Choose either None for no traffic generation or a tuple containing (source, destination)
+TRAFFIC_GENERATION = ("C-1-1", "C-4-1")
+
+LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/mtp/MTP_logs/misc/sort_array_test_2"
 
 # %%
 # Get acccess to FabUtils in the local_books dir first
@@ -93,6 +96,13 @@ if FAILURE_MODE not in {"soft", "hard", "hybrid"}:
 IS_SOFT_FAILURE = (FAILURE_MODE == "soft")
 IS_HYBRID_FAILURE = (FAILURE_MODE == "hybrid")
 WILL_FAIL_NEIGHBOR = (FAILURE_MODE == "hard")
+
+if TRAFFIC_GENERATION is not None:
+    IS_GENERATING_TRAFFIC = True
+    TRAFFIC_SOURCE = TRAFFIC_GENERATION[0]
+    TRAFFIC_DESTINATION = TRAFFIC_GENERATION[1]
+else:
+    IS_GENERATING_TRAFFIC = False
 
 # Then proceed with the rest of the imports (including FabUtils)
 from FabUtils import FabOrchestrator
@@ -144,6 +154,7 @@ SOFT_MODE = IS_SOFT_FAILURE
 INTF_NAMES_KNOWN = bool(NODE_INTF_NAME) and (bool(NEIGHBOR_INTF_NAME) if WILL_FAIL_NEIGHBOR else True)
 
 print(f"{FAILURE_MODE.capitalize()} link failure experiment to be performed on link {NODE_TO_FAIL} <--> {NEIGHBOR_TO_FAIL}")
+print(f"{TRAFFIC_SOURCE} will send traffic to {TRAFFIC_DESTINATION}" if IS_GENERATING_TRAFFIC else "No traffic generation")
 
 # %%
 # Determine the interface of the node to be failed
@@ -164,6 +175,11 @@ if WILL_FAIL_NEIGHBOR:
     FAILED_NODE_PREFIXES += f",{NEIGHBOR_TO_FAIL}"
     print(f"{NEIGHBOR_TO_FAIL} interface name: {failure_dict[NEIGHBOR_TO_FAIL]['intfName']}")
 
+# %%
+# Determine the destination host IP address if the experiment includes traffic generation
+if IS_GENERATING_TRAFFIC:
+    destinationIPAddress = manager.getHostIPAddress(TRAFFIC_DESTINATION)
+
 # %% [markdown]
 # ### Create an experiment log directory
 
@@ -172,9 +188,10 @@ if WILL_FAIL_NEIGHBOR:
 lOG_MTP_NAME = "/home/rocky/mtp.log"
 LOG_INTF_DOWN_NAME = "/home/rocky/mtp_scripts/intf_down.log"
 LOG_NODE_DOWN_NAME = "/home/rocky/CMTP/SRC/node_down.log"
+LOG_TRAFFIC_NAME = "/home/rocky/Basic-Traffic-Generator/results_result.txt"
 
 # Local log locations
-subdirs = ["convergence", "downtime"]
+subdirs = ["convergence", "downtime", "traffic"]
 baseLogDir = Path(LOG_DIR_PATH)
 for sub in subdirs:
     (baseLogDir / sub).mkdir(parents=True, exist_ok=True)
@@ -184,11 +201,17 @@ for sub in subdirs:
 
 # %%
 # choose a time 5 seconds in the future (same for every node)
-start_at = datetime.now(timezone.utc) + timedelta(seconds=5)
+start_at = datetime.now(timezone.utc) + timedelta(seconds=2)
 start_epoch = f"{start_at.timestamp():.3f}"   # seconds.milliseconds
 
-failIntfCmd = f"bash /home/rocky/mtp_scripts/intf_down.sh {{intfName}} {int(SOFT_MODE)} {start_epoch}"
+if IS_GENERATING_TRAFFIC:
+    trafficReceiveCmd = "bash /home/rocky/mtp_scripts/start_traffic.sh -r"
+    trafficSendCmd = f"bash /home/rocky/mtp_scripts/start_traffic.sh -s {destinationIPAddress} -c 3000"
+    manager.executeCommandsParallel(trafficReceiveCmd, prefixList=TRAFFIC_DESTINATION)
+    manager.executeCommandsParallel(trafficSendCmd, prefixList=TRAFFIC_SOURCE)
+    time.sleep(3)
 
+failIntfCmd = f"bash /home/rocky/mtp_scripts/intf_down.sh {{intfName}} {int(SOFT_MODE)} {start_epoch}"
 manager.executeCommandsParallel(failIntfCmd, prefixList=FAILED_NODE_PREFIXES, fmt=failure_dict)
 
 # %%
@@ -208,9 +231,23 @@ print("MTP data collection stopped.")
 
 # %%
 stopTmuxSession = "tmux kill-session -t mtp"
+stopTrafficSession = "tmux kill-session -t traffic"
+analyzeTrafficSession = "cd /home/rocky/Basic-Traffic-Generator && sudo python3 TrafficGenerator.py -a"
 
 manager.executeCommandsParallel(stopTmuxSession, prefixList=NETWORK_NODE_PREFIXES)
 print("MTP Tmux session stopped.")
+
+if IS_GENERATING_TRAFFIC:
+    TRAFFIC_PREFIXES = TRAFFIC_SOURCE + "," + TRAFFIC_DESTINATION
+    manager.executeCommandsParallel(stopTrafficSession, prefixList=TRAFFIC_PREFIXES)
+    print("Traffic Tmux session stopped.")
+
+    manager.executeCommandsParallel(analyzeTrafficSession, prefixList=TRAFFIC_DESTINATION)
+    print("Traffic results analyzed.")
+
+
+
+
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Collect Logs</b></span>
@@ -218,7 +255,8 @@ print("MTP Tmux session stopped.")
 # %%
 mtp_local       = baseLogDir / "convergence" / "{name}_mtp.log"
 intf_down_local = baseLogDir / "downtime" / "{name}_intf_down.log"
-mtp_down_local  = baseLogDir / "downtime"    / "nodes_down.log"
+mtp_down_local  = baseLogDir / "downtime" / "nodes_down.log"
+traffic_local   = baseLogDir / "traffic" / "traffic.log"
 
 nodeDownTimeCmd = f"cat {Path(LOG_NODE_DOWN_NAME)}"
 
@@ -240,11 +278,18 @@ nodeDownTimes = manager.executeCommandsParallel(
     prefixList=NETWORK_NODE_PREFIXES,
     returnOutput=True
 )
-mtp_down_local.parent.mkdir(parents=True, exist_ok=True)
 
+mtp_down_local.parent.mkdir(parents=True, exist_ok=True)
 with mtp_down_local.open("w") as node_log_file:
     for node, time in nodeDownTimes.items():
         node_log_file.write(f"{node}:{time}")
+
+if IS_GENERATING_TRAFFIC:
+    # Traffic 
+    manager.downloadFilesParallel(
+        traffic_local, LOG_TRAFFIC_NAME,
+        prefixList=TRAFFIC_DESTINATION
+    )
 
 # %%
 # Create a log file to record information associated with the experiment run
