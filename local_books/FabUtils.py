@@ -314,3 +314,25 @@ class FabOrchestrator:
         '''
 
         return self.slice.get_interface(f"{nodeName}-intf-{neighborName}-p1").get_device_name()
+    
+    
+    def getHostIPAddress(self, nodeName):
+        '''
+        Return the IPv4 address of a host node. Assumes the host has only
+        one experiment interface with an IP address assigned.
+
+        :param nodeName: The name of the FABRIC node.
+        :returns: The IPv4 address as a string.
+        '''
+
+        if nodeName not in self.nodeDict:
+            raise Exception(f"Node '{nodeName}' not found in slice.")
+
+        node = self.nodeDict[nodeName]
+
+        for iface in node.get_interfaces():
+            ip = iface.get_ip_addr()
+            if ip:
+                return str(ip)
+
+        raise Exception(f"No IP address found for host '{nodeName}'.")
