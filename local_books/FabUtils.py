@@ -26,6 +26,7 @@ class FabOrchestrator:
 
             # Nodes
             self.nodes = self.slice.get_nodes()
+            self.nodeDict = {node.get_name(): node for node in self.nodes}
 
             print(f"Slice name: {sliceName}\nSlice and nodes were acquired successfully.")
  
@@ -41,19 +42,21 @@ class FabOrchestrator:
         :param prefixList: A naming prefix (ex: C for client) that groups nodes together to run the same configuration.
         :param excludedList: A naming prefix that groups nodes together to NOT run the desired configuration.
         '''
-        
-        if(prefixList):
+
+        if prefixList:
             prefixList = tuple(map(str.strip, prefixList.split(",")))
 
-        if(excludedList):
+        if excludedList:
             excludedList = tuple(map(str.strip, excludedList.split(",")))
-        
-        for node in self.nodes:
-            nodeName = node.get_name()
 
-            if((excludedList and nodeName.startswith(excludedList)) or (prefixList and not nodeName.startswith(prefixList))):
+        for nodeName, node in self.nodeDict.items():
+
+            if excludedList and nodeName.startswith(excludedList):
                 continue
-            
+
+            if prefixList and not nodeName.startswith(prefixList):
+                continue
+
             yield node
 
     
@@ -270,10 +273,11 @@ class FabOrchestrator:
         '''
         Grab the SSH command for each node in the topology and save it to a file in the local directory.
         '''
-        
+
         with open(f"{self.slice.get_name()}_ssh_cmds.txt", "w") as sshFile:
-            for node in self.nodes:
-                sshFile.write(f"{node.get_name()}:\n")
+            for nodeName in sorted(self.nodeDict):
+                node = self.nodeDict[nodeName]
+                sshFile.write(f"{nodeName}:\n")
                 sshFile.write(f"{node.get_ssh_command()}\n")
 
         return
