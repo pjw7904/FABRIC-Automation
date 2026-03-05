@@ -79,7 +79,7 @@ NEIGHBOR_TO_FAIL = "T-2"
 NEIGHBOR_INTF_NAME = None
 
 ## Choose either None for no traffic generation or a tuple containing (source, destination)
-TRAFFIC_GENERATION = ("C-1-1", "C-4-1")
+TRAFFIC_GENERATION = (("C-1-1", "C-4-1"), ("C-1-2", "C-4-2"))
 
 LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/mtp/MTP_logs/misc/sort_array_test_2"
 
@@ -99,8 +99,11 @@ WILL_FAIL_NEIGHBOR = (FAILURE_MODE == "hard")
 
 if TRAFFIC_GENERATION is not None:
     IS_GENERATING_TRAFFIC = True
-    TRAFFIC_SOURCE = TRAFFIC_GENERATION[0]
-    TRAFFIC_DESTINATION = TRAFFIC_GENERATION[1]
+    # List of (src, dst) tuples
+    TRAFFIC_PAIRS = list(TRAFFIC_GENERATION)
+
+    TRAFFIC_SOURCES = [src for (src, _) in TRAFFIC_PAIRS]
+    TRAFFIC_DESTINATIONS = [dst for (_, dst) in TRAFFIC_PAIRS]
 else:
     IS_GENERATING_TRAFFIC = False
 
@@ -154,7 +157,12 @@ SOFT_MODE = IS_SOFT_FAILURE
 INTF_NAMES_KNOWN = bool(NODE_INTF_NAME) and (bool(NEIGHBOR_INTF_NAME) if WILL_FAIL_NEIGHBOR else True)
 
 print(f"{FAILURE_MODE.capitalize()} link failure experiment to be performed on link {NODE_TO_FAIL} <--> {NEIGHBOR_TO_FAIL}")
-print(f"{TRAFFIC_SOURCE} will send traffic to {TRAFFIC_DESTINATION}" if IS_GENERATING_TRAFFIC else "No traffic generation")
+
+if IS_GENERATING_TRAFFIC:
+    for src, dst in TRAFFIC_PAIRS:
+        print(f"{src} will send traffic to {dst}")
+else:
+    print("No traffic generation")
 
 # %%
 # Determine the interface of the node to be failed
@@ -178,7 +186,9 @@ if WILL_FAIL_NEIGHBOR:
 # %%
 # Determine the destination host IP address if the experiment includes traffic generation
 if IS_GENERATING_TRAFFIC:
-    destinationIPAddress = manager.getHostIPAddress(TRAFFIC_DESTINATION)
+    destinationIPMap = {}  # dst_name -> ip
+    for dst in set(TRAFFIC_DESTINATIONS):
+        destinationIPMap[dst] = manager.getHostIPAddress(dst)
 
 # %% [markdown]
 # ### Create an experiment log directory
@@ -206,9 +216,17 @@ start_epoch = f"{start_at.timestamp():.3f}"   # seconds.milliseconds
 
 if IS_GENERATING_TRAFFIC:
     trafficReceiveCmd = "bash /home/rocky/mtp_scripts/start_traffic.sh -r"
-    trafficSendCmd = f"bash /home/rocky/mtp_scripts/start_traffic.sh -s {destinationIPAddress} -c 3000"
-    manager.executeCommandsParallel(trafficReceiveCmd, prefixList=TRAFFIC_DESTINATION)
-    manager.executeCommandsParallel(trafficSendCmd, prefixList=TRAFFIC_SOURCE)
+
+    # Start all receivers first
+    receiverList = ",".join(sorted(set(TRAFFIC_DESTINATIONS)))
+    manager.executeCommandsParallel(trafficReceiveCmd, prefixList=receiverList)
+
+    # Start each sender with the correct destination IP
+    for src, dst in TRAFFIC_PAIRS:
+        dst_ip = destinationIPMap[dst]
+        trafficSendCmd = f"bash /home/rocky/mtp_scripts/start_traffic.sh -s {dst_ip} -c 3000"
+        manager.executeCommandsParallel(trafficSendCmd, prefixList=src)
+
     time.sleep(3)
 
 failIntfCmd = f"bash /home/rocky/mtp_scripts/intf_down.sh {{intfName}} {int(SOFT_MODE)} {start_epoch}"
@@ -238,16 +256,15 @@ manager.executeCommandsParallel(stopTmuxSession, prefixList=NETWORK_NODE_PREFIXE
 print("MTP Tmux session stopped.")
 
 if IS_GENERATING_TRAFFIC:
-    TRAFFIC_PREFIXES = TRAFFIC_SOURCE + "," + TRAFFIC_DESTINATION
+    allNodesInTraffic = sorted(set(TRAFFIC_SOURCES + TRAFFIC_DESTINATIONS))
+    TRAFFIC_PREFIXES = ",".join(allNodesInTraffic)
+
     manager.executeCommandsParallel(stopTrafficSession, prefixList=TRAFFIC_PREFIXES)
-    print("Traffic Tmux session stopped.")
+    print("Traffic tmux session stopped.")
 
-    manager.executeCommandsParallel(analyzeTrafficSession, prefixList=TRAFFIC_DESTINATION)
+    receiverList = ",".join(sorted(set(TRAFFIC_DESTINATIONS)))
+    manager.executeCommandsParallel(analyzeTrafficSession, prefixList=receiverList)
     print("Traffic results analyzed.")
-
-
-
-
 
 # %% [markdown]
 # ## <span style="color: #034694"><b>Collect Logs</b></span>
@@ -284,11 +301,14 @@ with mtp_down_local.open("w") as node_log_file:
     for node, time in nodeDownTimes.items():
         node_log_file.write(f"{node}:{time}")
 
+
 if IS_GENERATING_TRAFFIC:
-    # Traffic 
+    receiverList = ",".join(sorted(set(TRAFFIC_DESTINATIONS)))
+
     manager.downloadFilesParallel(
-        traffic_local, LOG_TRAFFIC_NAME,
-        prefixList=TRAFFIC_DESTINATION
+        localLocation=f"{traffic_local}/results_{{name}}.txt",
+        remoteLocation=LOG_TRAFFIC_NAME,
+        prefixList=receiverList
     )
 
 # %%
