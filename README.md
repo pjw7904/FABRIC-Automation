@@ -16,13 +16,36 @@ FABRIC has done a good job of providing commonly-used third party packages, such
 | figs | Images that are included in books should be saved here. |
 | graphs | GraphML files should be saved here. Look at the existing files to learn the syntax. |
 | local_books | The Jupyter notebooks to be run on the FABRIC Jupyter enviornment to build networks. Anything involving Slice creation, modification, and any and all calls to the FabLib or MFLib API should be included in books located here. |
-| remote_scripts | Any scripts (Bash, Python, etc.) that would be uploaded to FABRIC nodes to be run locally. |
+| remote_scripts | Any scripts (Bash, Python, etc.) that are uploaded to FABRIC nodes and executed locally. These typically include protocol launch scripts, experiment runners, and traffic generators. |
 
 Slice creation is typically done by first writing a GraphML file (either manually or via a script), placing it in the graphs directory, and then running a Slice builder book in local_books to complete initial configuration. Beyond creating the network, builder books usually include setting IPv4 addressing, installing necessary packages, etc.
 
 From there, the protocol being tested and the type of experiment being run will determine what book(s) to run next. Alternatively, you can remotely access the nodes and manually input commands.
 
-A wrapper around the FabLib API, the FabUtils class, is included in local_books to make common tasks run by our research team easier to code.
+Some remote scripts are designed to run in different experiment roles. 
+For example, the traffic generator launcher can run either as a sender or receiver.
+
+Example usage:
+
+Sender:
+```python
+bash start_traffic.sh -s <destination_ip> -c <packet_count>
+```
+
+Receiver:
+```python
+bash start_traffic.sh -r
+```
+
+Typically, the destination IP address is determined by the FABRIC orchestration notebooks.
+
+A wrapper around the FabLib API, the FabUtils class, is included in local_books to make common tasks run by our research team easier to code. 
+This includes helpers for:
+
+* executing commands in parallel across nodes
+* uploading and downloading files
+* selecting subsets of nodes by prefix
+* retrieving node information such as experiment interface IP addresses
 
 ## Configuration
 
