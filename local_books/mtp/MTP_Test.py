@@ -273,7 +273,7 @@ if IS_GENERATING_TRAFFIC:
 mtp_local       = baseLogDir / "convergence" / "{name}_mtp.log"
 intf_down_local = baseLogDir / "downtime" / "{name}_intf_down.log"
 mtp_down_local  = baseLogDir / "downtime" / "nodes_down.log"
-traffic_local   = baseLogDir / "traffic" / "traffic.log"
+traffic_local   = baseLogDir / "traffic" / "{name}_traffic.log"
 
 nodeDownTimeCmd = f"cat {Path(LOG_NODE_DOWN_NAME)}"
 
@@ -306,8 +306,7 @@ if IS_GENERATING_TRAFFIC:
     receiverList = ",".join(sorted(set(TRAFFIC_DESTINATIONS)))
 
     manager.downloadFilesParallel(
-        localLocation=f"{traffic_local}/results_{{name}}.txt",
-        remoteLocation=LOG_TRAFFIC_NAME,
+        traffic_local, LOG_TRAFFIC_NAME,
         prefixList=receiverList
     )
 
