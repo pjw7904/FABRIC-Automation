@@ -61,22 +61,27 @@
 
 # %%
 # Slice information
-SLICE_NAME = "clos_bgp"
+SLICE_NAME = "test_bgp"
 
 NETWORK_NODE_PREFIXES = "T,S,L"
 COMPUTE_NODE_PREFIXES = "C"
 
 # Experiment information
-# Choose exactly one: "soft", "hard", "hybrid"
+## Choose exactly one: "soft", "hard", "hybrid"
 FAILURE_MODE = "hybrid"
 
-NODE_TO_FAIL = "L-1-1"
+## At minimum, the node and neighbor to fail must be defined. 
+## If you know the interface names already, you can add them. Otherwise, leave them as None.
+NODE_TO_FAIL = "T-1"
 NODE_INTF_NAME = None
 
-NEIGHBOR_TO_FAIL = "S-1-1"
+NEIGHBOR_TO_FAIL = "L-1"
 NEIGHBOR_INTF_NAME = None
 
-LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/bgp/BGP_logs/bgp_soft_failure_bfd/test_6" # Local dir (download target)
+## Choose either None for no traffic generation or a tuple containing (source, destination)
+TRAFFIC_GENERATION = (("C-1-1", "C-4-1"), ("C-3-1", "C-2-1"))
+
+LOG_DIR_PATH = "/home/pjw7904/fabric/FABRIC-Automation/local_books/bgp/BGP_logs/misc/upper_3"  # Local dir (download target)
 
 # %%
 # Get acccess to FabUtils in the local_books dir first
@@ -88,13 +93,25 @@ FAILURE_MODE = FAILURE_MODE.strip().lower()
 if FAILURE_MODE not in {"soft", "hard", "hybrid"}:
     raise ValueError("FAILURE_MODE must be one of: 'soft', 'hard', 'hybrid'")
 
-IS_SOFT_FAILURE   = (FAILURE_MODE == "soft")
+IS_SOFT_FAILURE = (FAILURE_MODE == "soft")
 IS_HYBRID_FAILURE = (FAILURE_MODE == "hybrid")
 WILL_FAIL_NEIGHBOR = (FAILURE_MODE == "hard")
+
+if TRAFFIC_GENERATION is not None:
+    IS_GENERATING_TRAFFIC = True
+    # List of (src, dst) tuples
+    TRAFFIC_PAIRS = list(TRAFFIC_GENERATION)
+
+    TRAFFIC_SOURCES = [src for (src, _) in TRAFFIC_PAIRS]
+    TRAFFIC_DESTINATIONS = [dst for (_, dst) in TRAFFIC_PAIRS]
+else:
+    IS_GENERATING_TRAFFIC = False
 
 # Then proceed with the rest of the imports (including FabUtils)
 from FabUtils import FabOrchestrator
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+import time
 
 try:
     manager = FabOrchestrator(SLICE_NAME)
@@ -113,6 +130,12 @@ SOFT_MODE = IS_SOFT_FAILURE
 INTF_NAMES_KNOWN = bool(NODE_INTF_NAME) and (bool(NEIGHBOR_INTF_NAME) if WILL_FAIL_NEIGHBOR else True)
 
 print(f"{FAILURE_MODE.capitalize()} link failure experiment to be performed on link {NODE_TO_FAIL} <--> {NEIGHBOR_TO_FAIL}")
+
+if IS_GENERATING_TRAFFIC:
+    for src, dst in TRAFFIC_PAIRS:
+        print(f"{src} will send traffic to {dst}")
+else:
+    print("No traffic generation")
 
 # %%
 # Determine the interface of the node to be failed
@@ -133,21 +156,26 @@ if WILL_FAIL_NEIGHBOR:
     FAILED_NODE_PREFIXES += f",{NEIGHBOR_TO_FAIL}"
     print(f"{NEIGHBOR_TO_FAIL} interface name: {failure_dict[NEIGHBOR_TO_FAIL]['intfName']}")
 
+# %%
+# Determine the destination host IP address if the experiment includes traffic generation
+if IS_GENERATING_TRAFFIC:
+    destinationIPMap = {}  # dst_name -> ip
+    for dst in set(TRAFFIC_DESTINATIONS):
+        destinationIPMap[dst] = manager.getHostIPAddress(dst)
+
 # %% [markdown]
 # ### Create an experiment log directory
 
 # %%
-from pathlib import Path
-import time
-
 # Remote log locations
 lOG_FRR_NAME = "/var/log/frr/bgpd.log"
 LOG_CAP_NAME = "/home/rocky/bgp_scripts/bgp_update_only.pcap"
 LOG_OVERHEAD_NAME = "/home/rocky/bgp_scripts/overhead.log"
 LOG_INTF_DOWN_NAME = "/home/rocky/bgp_scripts/intf_down.log"
+LOG_TRAFFIC_NAME = "/home/rocky/Basic-Traffic-Generator/results_result.txt"
 
 # Local log locations
-subdirs = ["captures", "overhead", "convergence"]
+subdirs = ["captures", "overhead", "convergence", "traffic"]
 baseLogDir = Path(LOG_DIR_PATH)
 for sub in subdirs:
     (baseLogDir / sub).mkdir(parents=True, exist_ok=True)
@@ -173,25 +201,53 @@ print("Giving the nodes time to get configured...")
 time.sleep(10)
 
 # %%
-# choose a time 5 seconds in the future (same for every node)
-start_at = datetime.now(timezone.utc) + timedelta(seconds=5)
+# choose a time 2 seconds in the future (same for every node)
+start_at = datetime.now(timezone.utc) + timedelta(seconds=2)
 start_epoch = f"{start_at.timestamp():.3f}"   # seconds.milliseconds
 
-failIntfCmd = f"bash /home/rocky/bgp_scripts/intf_down.sh {{intfName}} {int(SOFT_MODE)} {start_epoch}"
+if IS_GENERATING_TRAFFIC:
+    trafficReceiveCmd = "bash /home/rocky/bgp_scripts/start_traffic.sh -r"
 
+    # Start all receivers first
+    receiverList = ",".join(sorted(set(TRAFFIC_DESTINATIONS)))
+    manager.executeCommandsParallel(trafficReceiveCmd, prefixList=receiverList)
+
+    # Start each sender with the correct destination IP
+    for src, dst in TRAFFIC_PAIRS:
+        dst_ip = destinationIPMap[dst]
+        trafficSendCmd = f"bash /home/rocky/bgp_scripts/start_traffic.sh -s {dst_ip} -c 3000"
+        manager.executeCommandsParallel(trafficSendCmd, prefixList=src)
+
+    time.sleep(3)
+
+failIntfCmd = f"bash /home/rocky/bgp_scripts/intf_down.sh {{intfName}} {int(SOFT_MODE)} {start_epoch}"
 manager.executeCommandsParallel(failIntfCmd, prefixList=FAILED_NODE_PREFIXES, fmt=failure_dict)
 
 # %%
 print("Giving the nodes time to get reconverged...")
-time.sleep(35)
+time.sleep(15)
 
 # %% [markdown]
 # ### Experiment teardown
 
 # %%
-stopLoggingCmd = "tmux kill-session -t bgp"
-manager.executeCommandsParallel(stopLoggingCmd, prefixList=NETWORK_NODE_PREFIXES)
+stopTmuxSession = "tmux kill-session -t bgp"
+stopTrafficSession = "tmux kill-session -t traffic"
+analyzeTrafficSession = "cd /home/rocky/Basic-Traffic-Generator && sudo python3 TrafficGenerator.py -a"
+
+manager.executeCommandsParallel(stopTmuxSession, prefixList=NETWORK_NODE_PREFIXES)
 print("BGP data collection stopped.")
+
+if IS_GENERATING_TRAFFIC:
+    allNodesInTraffic = sorted(set(TRAFFIC_SOURCES + TRAFFIC_DESTINATIONS))
+    TRAFFIC_PREFIXES = ",".join(allNodesInTraffic)
+
+    manager.executeCommandsParallel(stopTrafficSession, prefixList=TRAFFIC_PREFIXES)
+    print("Traffic tmux session stopped.")
+
+    receiverList = ",".join(sorted(set(TRAFFIC_DESTINATIONS)))
+    manager.executeCommandsParallel(analyzeTrafficSession, prefixList=receiverList)
+    print("Traffic results analyzed.")
 
 # %%
 print("Giving the nodes time to process BGP information...")
@@ -205,6 +261,7 @@ capture_local   = baseLogDir / "captures"    / "{name}_update.pcap"
 overhead_local  = baseLogDir / "overhead"    / "{name}_overhead.log"
 frr_local       = baseLogDir / "convergence" / "{name}_frr.log"
 intf_down_local = baseLogDir / "convergence" / "{name}_intf_down.log"
+traffic_local   = baseLogDir / "traffic" / "{name}_traffic.log"
 
 # BGP message captures
 manager.downloadFilesParallel(
@@ -229,6 +286,14 @@ manager.downloadFilesParallel(
     intf_down_local, LOG_INTF_DOWN_NAME,
     prefixList=FAILED_NODE_PREFIXES
 )
+
+if IS_GENERATING_TRAFFIC:
+    receiverList = ",".join(sorted(set(TRAFFIC_DESTINATIONS)))
+
+    manager.downloadFilesParallel(
+        traffic_local, LOG_TRAFFIC_NAME,
+        prefixList=receiverList
+    )
 
 # %%
 # Create a log file to record information associated with the experiment run
